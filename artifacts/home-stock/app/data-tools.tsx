@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useClerk, useUser } from '@clerk/expo';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useColors } from '@/hooks/useColors';
 import { useStock } from '@/state/StockContext';
@@ -19,20 +20,40 @@ import { router } from 'expo-router';
 export default function DataToolsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { items, importItems, isLoading } = useStock();
+  const {
+    items,
+    shoppingList,
+    recentLocations,
+    recentStores,
+    importBackup,
+    isLoading,
+    cloudSyncStatus,
+    cloudSyncError,
+    syncNow,
+  } = useStock();
+  const { user } = useUser();
+  const { signOut } = useClerk();
   const [jsonText, setJsonText] = useState('');
   const [error, setError] = useState('');
 
   async function exportItems() {
-    if (items.length === 0) {
-      Alert.alert('No items to export', 'Add items to your stock list first.');
+    if (
+      items.length === 0 &&
+      shoppingList.length === 0 &&
+      recentLocations.length === 0 &&
+      recentStores.length === 0
+    ) {
+      Alert.alert('No data to export', 'Add something to your stock first.');
       return;
     }
     const backup = {
-      format: 'home-stock-items',
-      version: 2,
+      format: 'home-stock-backup',
+      version: 3,
       exportedAt: new Date().toISOString(),
       items,
+      shoppingList,
+      recentLocations,
+      recentStores,
     };
     try {
       await Share.share({
@@ -50,14 +71,20 @@ export default function DataToolsScreen() {
       return;
     }
     try {
-      const result = importItems(JSON.parse(jsonText) as unknown);
+      const result = importBackup(JSON.parse(jsonText) as unknown);
       setJsonText('');
       setError('');
       const summary = `${result.importedCount} ${result.importedCount === 1 ? 'item was' : 'items were'} added.`;
       const skipped = result.skippedCount
         ? ` ${result.skippedCount} duplicate ${result.skippedCount === 1 ? 'item was' : 'items were'} skipped.`
         : '';
-      Alert.alert('Import complete', `${summary}${skipped} Your existing items were kept.`);
+      const listSummary = result.shoppingListAddedCount
+        ? ` ${result.shoppingListAddedCount} buy-list ${result.shoppingListAddedCount === 1 ? 'entry was' : 'entries were'} added.`
+        : '';
+      Alert.alert(
+        'Import complete',
+        `${summary}${listSummary}${skipped} Your existing data was kept.`,
+      );
     } catch (importError) {
       setError(
         importError instanceof Error
@@ -98,26 +125,114 @@ export default function DataToolsScreen() {
             Keep a copy of your stock
           </Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            Export a JSON backup to another app, or paste a backup here to bring items in.
+            Your account syncs automatically. You can also export a complete JSON backup or import one here.
           </Text>
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-            Export items
+            Cloud sync
           </Text>
           <Text style={[styles.cardCopy, { color: colors.mutedForeground }]}>
-            Share all {items.length} {items.length === 1 ? 'item' : 'items'} as JSON using your phone’s share menu.
+            Signed in as {user?.primaryEmailAddress?.emailAddress ?? 'your account'}.
+          </Text>
+          <Text
+            accessibilityLiveRegion="polite"
+            style={[
+              styles.syncStatus,
+              {
+                color:
+                  cloudSyncStatus === 'error'
+                    ? colors.destructive
+                    : colors.mutedForeground,
+              },
+            ]}
+          >
+            {cloudSyncError ??
+              (cloudSyncStatus === 'syncing'
+                ? 'Syncing your stock…'
+                : 'Your latest stock is saved to your account.')}
           </Text>
           <Pressable
             accessibilityRole="button"
-            disabled={isLoading || items.length === 0}
+            disabled={isLoading || cloudSyncStatus === 'syncing'}
+            onPress={() => void syncNow()}
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              {
+                backgroundColor: colors.secondary,
+                opacity:
+                  isLoading || cloudSyncStatus === 'syncing'
+                    ? 0.5
+                    : pressed
+                      ? 0.8
+                      : 1,
+              },
+            ]}
+          >
+            <Feather name="refresh-cw" size={16} color={colors.primary} />
+            <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>
+              {cloudSyncStatus === 'syncing' ? 'Syncing…' : 'Sync now'}
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() =>
+              Alert.alert(
+                'Sign out?',
+                'Your saved stock stays on this device and in your account.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Sign out',
+                    style: 'destructive',
+                    onPress: () => void signOut(),
+                  },
+                ],
+              )
+            }
+            style={({ pressed }) => [
+              styles.textButton,
+              { opacity: pressed ? 0.65 : 1 },
+            ]}
+          >
+            <Text style={[styles.textButtonText, { color: colors.mutedForeground }]}>
+              Sign out
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+            Export a full backup
+          </Text>
+          <Text style={[styles.cardCopy, { color: colors.mutedForeground }]}>
+            Share {items.length} {items.length === 1 ? 'item' : 'items'}, your buy list, and saved places as JSON.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            disabled={
+              isLoading ||
+              (items.length === 0 &&
+                shoppingList.length === 0 &&
+                recentLocations.length === 0 &&
+                recentStores.length === 0)
+            }
             onPress={() => void exportItems()}
             style={({ pressed }) => [
               styles.primaryButton,
               {
                 backgroundColor: colors.primary,
-                opacity: isLoading || items.length === 0 ? 0.5 : pressed ? 0.85 : 1,
+                opacity:
+                  isLoading ||
+                  (items.length === 0 &&
+                    shoppingList.length === 0 &&
+                    recentLocations.length === 0 &&
+                    recentStores.length === 0)
+                    ? 0.5
+                    : pressed
+                      ? 0.85
+                      : 1,
               },
             ]}
             testID="export-items-button"
@@ -131,10 +246,10 @@ export default function DataToolsScreen() {
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-            Import items
+            Import a full backup
           </Text>
           <Text style={[styles.cardCopy, { color: colors.mutedForeground }]}>
-            Paste the JSON you exported. Items are merged into your stock; existing items are never removed, and duplicate IDs are skipped.
+            Paste a Home Stock backup. Items, buy-list entries, and saved places are merged; existing data is kept.
           </Text>
           <TextInput
             accessibilityLabel="Paste inventory JSON"
@@ -185,7 +300,7 @@ export default function DataToolsScreen() {
         </View>
 
         <Text style={[styles.privacyNote, { color: colors.mutedForeground }]}>
-          Your inventory stays on this device unless you choose to share an export.
+          Your stock is synced to this account and cached on this device. Export JSON for a portable backup.
         </Text>
       </KeyboardAwareScrollViewCompat>
     </View>
@@ -211,5 +326,8 @@ const styles = StyleSheet.create({
   errorText: { fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 16 },
   secondaryButton: { minHeight: 47, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   secondaryButtonText: { fontFamily: 'Inter_700Bold', fontSize: 12 },
+  syncStatus: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 17 },
+  textButton: { minHeight: 32, alignItems: 'center', justifyContent: 'center' },
+  textButtonText: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
   privacyNote: { fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, textAlign: 'center', paddingHorizontal: 12 },
 });

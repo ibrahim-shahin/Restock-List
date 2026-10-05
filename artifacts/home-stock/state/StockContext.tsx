@@ -1,4 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  getHomeStock,
+  saveHomeStock,
+} from '@workspace/api-client-react';
 import * as Haptics from 'expo-haptics';
 import React, {
   createContext,
@@ -6,6 +10,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -39,17 +44,37 @@ type SavedData = {
 type StockContextValue = SavedData & {
   isLoading: boolean;
   storageError: string | null;
+  cloudSyncStatus: 'syncing' | 'synced' | 'error';
+  cloudSyncError: string | null;
+  syncNow: () => Promise<void>;
   saveItem: (draft: StockItemDraft, id?: string) => string;
   deleteItem: (id: string) => void;
   createBuyList: (itemIds: string[], storeType: string) => void;
   togglePurchased: (entryId: string) => void;
   clearPurchased: () => void;
-  importItems: (data: unknown) => { importedCount: number; skippedCount: number };
+  importBackup: (data: unknown) => {
+    importedCount: number;
+    skippedCount: number;
+    shoppingListAddedCount: number;
+  };
 };
 
 const STORAGE_KEY = 'home-stock:v1';
+const LEGACY_OWNER_KEY = 'home-stock:legacy-owner:v1';
 const StockContext = createContext<StockContextValue | null>(null);
 const MAX_RECENT_PLACES = 10;
+const EMPTY_SAVED_DATA: SavedData = {
+  items: [],
+  shoppingList: [],
+  recentLocations: [],
+  recentStores: [],
+};
+
+type LocalSnapshot = {
+  data: SavedData;
+  localUpdatedAt: number;
+  cloudUpdatedAt: number;
+};
 
 function createId() {
   return `${Date.now().toString()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -188,65 +213,396 @@ function normalizeSavedData(value: unknown): SavedData {
   };
 }
 
-export function StockProvider({ children }: { children: ReactNode }) {
+function timestampOrZero(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function readLocalSnapshot(value: string | null): LocalSnapshot | null {
+  if (!value) return null;
+  const record = asRecord(JSON.parse(value));
+  return {
+    data: normalizeSavedData(record),
+    localUpdatedAt: timestampOrZero(record._localUpdatedAt),
+    cloudUpdatedAt: timestampOrZero(record._cloudUpdatedAt),
+  };
+}
+
+function hasSavedContent(data: SavedData): boolean {
+  return (
+    data.items.length > 0 ||
+    data.shoppingList.length > 0 ||
+    data.recentLocations.length > 0 ||
+    data.recentStores.length > 0
+  );
+}
+
+function mergeSavedData(local: SavedData, cloud: SavedData): SavedData {
+  const items = new Map<string, StockItem>();
+  for (const item of [...local.items, ...cloud.items]) items.set(item.id, item);
+
+  const shoppingList = new Map<string, BuyListItem>();
+  for (const entry of [...local.shoppingList, ...cloud.shoppingList]) {
+    shoppingList.set(entry.entryId, entry);
+  }
+
+  return {
+    items: [...items.values()],
+    shoppingList: [...shoppingList.values()],
+    recentLocations: uniquePlaces([
+      ...local.recentLocations,
+      ...cloud.recentLocations,
+    ]),
+    recentStores: uniquePlaces([...local.recentStores, ...cloud.recentStores]),
+  };
+}
+
+export function StockProvider({
+  children,
+  userId,
+}: {
+  children: ReactNode;
+  userId: string;
+}) {
+  const accountStorageKey = `${STORAGE_KEY}:account:${userId}`;
   const [items, setItems] = useState<StockItem[]>([]);
   const [shoppingList, setShoppingList] = useState<BuyListItem[]>([]);
   const [recentLocations, setRecentLocations] = useState<string[]>([]);
   const [recentStores, setRecentStores] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [cloudSyncStatus, setCloudSyncStatus] =
+    useState<StockContextValue['cloudSyncStatus']>('syncing');
+  const [cloudSyncError, setCloudSyncError] = useState<string | null>(null);
+  const [cloudReady, setCloudReady] = useState(false);
   const [canPersist, setCanPersist] = useState(false);
+  const localUpdatedAtRef = useRef(0);
+  const cloudUpdatedAtRef = useRef(0);
+  const currentDataRef = useRef(EMPTY_SAVED_DATA);
+  const lastPersistedJsonRef = useRef('');
+  const lastCloudSentJsonRef = useRef('');
+  const localWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const cloudWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  const savedData = useMemo(
+    () => ({ items, shoppingList, recentLocations, recentStores }),
+    [items, shoppingList, recentLocations, recentStores],
+  );
+  currentDataRef.current = savedData;
+
+  const applySavedData = useCallback((data: SavedData) => {
+    setItems(data.items);
+    setShoppingList(data.shoppingList);
+    setRecentLocations(data.recentLocations);
+    setRecentStores(data.recentStores);
+  }, []);
+
+  const writeLocalSnapshot = useCallback(
+    (data: SavedData, localUpdatedAt: number, cloudUpdatedAt: number) => {
+      const payload = JSON.stringify({
+        ...data,
+        _localUpdatedAt: localUpdatedAt,
+        _cloudUpdatedAt: cloudUpdatedAt,
+      });
+      const write = localWriteQueueRef.current
+        .catch(() => undefined)
+        .then(() => AsyncStorage.setItem(accountStorageKey, payload));
+      localWriteQueueRef.current = write;
+      return write;
+    },
+    [accountStorageKey],
+  );
+
+  const enqueueCloudWrite = useCallback(
+    (data: SavedData) => {
+      const dataJson = JSON.stringify(data);
+      const write = cloudWriteQueueRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          setCloudSyncStatus('syncing');
+          const saved = await saveHomeStock({ data });
+          const cloudUpdatedAt = saved.updatedAt
+            ? Date.parse(saved.updatedAt)
+            : Date.now();
+          cloudUpdatedAtRef.current = cloudUpdatedAt;
+          setCloudSyncStatus('synced');
+          setCloudSyncError(null);
+          if (JSON.stringify(currentDataRef.current) === dataJson) {
+            await writeLocalSnapshot(
+              data,
+              localUpdatedAtRef.current || Date.now(),
+              cloudUpdatedAt,
+            );
+          }
+        });
+      cloudWriteQueueRef.current = write;
+      return write;
+    },
+    [writeLocalSnapshot],
+  );
 
   useEffect(() => {
     let isMounted = true;
+    let didLoadLocal = false;
+    let local = EMPTY_SAVED_DATA;
+    let localSnapshot: LocalSnapshot | null = null;
+    let isLegacySource = false;
 
-    AsyncStorage.getItem(STORAGE_KEY)
-      .then((value) => {
-        if (!isMounted) return;
-        if (value) {
-          const parsed = normalizeSavedData(JSON.parse(value));
-          setItems(parsed.items);
-          setShoppingList(parsed.shoppingList);
-          setRecentLocations(parsed.recentLocations);
-          setRecentStores(parsed.recentStores);
+    async function loadAndReconcile() {
+      try {
+        const [accountValue, legacyOwner, legacyValue] = await Promise.all([
+          AsyncStorage.getItem(accountStorageKey),
+          AsyncStorage.getItem(LEGACY_OWNER_KEY),
+          AsyncStorage.getItem(STORAGE_KEY),
+        ]);
+
+        localSnapshot = readLocalSnapshot(accountValue);
+        if (localSnapshot) {
+          local = localSnapshot.data;
+        } else if (!legacyOwner && legacyValue) {
+          local = normalizeSavedData(JSON.parse(legacyValue));
+          isLegacySource = true;
         }
-        setCanPersist(true);
-      })
-      .catch(() => {
+        didLoadLocal = true;
+
+        let remote;
+        try {
+          remote = await getHomeStock();
+        } catch {
+          if (!isMounted) return;
+          const localUpdatedAt =
+            localSnapshot?.localUpdatedAt || Date.now();
+          localUpdatedAtRef.current = localUpdatedAt;
+          lastPersistedJsonRef.current = JSON.stringify(local);
+          applySavedData(local);
+          await writeLocalSnapshot(
+            local,
+            localUpdatedAt,
+            localSnapshot?.cloudUpdatedAt ?? 0,
+          ).catch(() => {
+            setStorageError(
+              'Your stock could not be saved on this device. Please try again.',
+            );
+          });
+          await AsyncStorage.setItem(LEGACY_OWNER_KEY, userId).catch(() => {});
+          setCloudSyncStatus('error');
+          setCloudSyncError(
+            'Could not reach cloud sync. Your stock remains on this device; try syncing again when you are online.',
+          );
+          setCanPersist(true);
+          setIsLoading(false);
+          return;
+        }
+
+        const cloud = remote.data
+          ? normalizeSavedData(remote.data)
+          : null;
+        const remoteUpdatedAt = remote.updatedAt
+          ? Date.parse(remote.updatedAt)
+          : 0;
+        let chosen = local;
+        let shouldUpload = cloud === null;
+
+        if (cloud) {
+          if (isLegacySource) {
+            chosen = mergeSavedData(local, cloud);
+            shouldUpload = true;
+          } else if (
+            localSnapshot &&
+            localSnapshot.localUpdatedAt > localSnapshot.cloudUpdatedAt
+          ) {
+            chosen =
+              localSnapshot.cloudUpdatedAt > 0 &&
+              remoteUpdatedAt > localSnapshot.cloudUpdatedAt
+                ? mergeSavedData(local, cloud)
+                : local;
+            shouldUpload = true;
+          } else if (
+            localSnapshot &&
+            localSnapshot.localUpdatedAt === 0 &&
+            localSnapshot.cloudUpdatedAt === 0 &&
+            hasSavedContent(local)
+          ) {
+            chosen = mergeSavedData(local, cloud);
+            shouldUpload = true;
+          } else {
+            chosen = cloud;
+          }
+        }
+
+        const chosenJson = JSON.stringify(chosen);
+        const localUpdatedAt = shouldUpload
+          ? chosenJson !== JSON.stringify(local) || !localSnapshot
+            ? Date.now()
+            : localSnapshot.localUpdatedAt || Date.now()
+          : remoteUpdatedAt || Date.now();
+        localUpdatedAtRef.current = localUpdatedAt;
+        cloudUpdatedAtRef.current = remoteUpdatedAt;
+        lastPersistedJsonRef.current = chosenJson;
+        applySavedData(chosen);
+
+        if (shouldUpload) {
+          try {
+            const saved = await saveHomeStock({ data: chosen });
+            cloudUpdatedAtRef.current = saved.updatedAt
+              ? Date.parse(saved.updatedAt)
+              : Date.now();
+            lastCloudSentJsonRef.current = chosenJson;
+            setCloudReady(true);
+            setCloudSyncStatus('synced');
+            setCloudSyncError(null);
+          } catch {
+            setCloudReady(false);
+            setCloudSyncStatus('error');
+            setCloudSyncError(
+              'Could not save the cloud copy. Your stock remains on this device; tap Sync now to retry.',
+            );
+          }
+        } else {
+          lastCloudSentJsonRef.current = chosenJson;
+          setCloudReady(true);
+          setCloudSyncStatus('synced');
+          setCloudSyncError(null);
+        }
+
+        await writeLocalSnapshot(
+          chosen,
+          localUpdatedAt,
+          cloudUpdatedAtRef.current,
+        ).catch(() => {
+          setStorageError(
+            'Your stock could not be saved on this device. Please try again.',
+          );
+        });
+        await AsyncStorage.setItem(LEGACY_OWNER_KEY, userId).catch(() => {});
         if (isMounted) {
+          setCanPersist(true);
+          setIsLoading(false);
+        }
+      } catch {
+        if (!isMounted) return;
+        if (didLoadLocal) {
+          const localUpdatedAt =
+            localSnapshot?.localUpdatedAt || Date.now();
+          localUpdatedAtRef.current = localUpdatedAt;
+          lastPersistedJsonRef.current = JSON.stringify(local);
+          applySavedData(local);
+          await writeLocalSnapshot(
+            local,
+            localUpdatedAt,
+            localSnapshot?.cloudUpdatedAt ?? 0,
+          ).catch(() => {});
+          await AsyncStorage.setItem(LEGACY_OWNER_KEY, userId).catch(() => {});
+          setCloudSyncStatus('error');
+          setCloudSyncError(
+            'Could not reconcile your cloud copy. Your existing stock was kept on this device.',
+          );
+          setCanPersist(true);
+        } else {
           setStorageError(
             'Your saved stock could not be opened. Your current changes may not be saved.',
           );
         }
-      })
-      .finally(() => {
-        if (isMounted) setIsLoading(false);
-      });
+        setIsLoading(false);
+      }
+    }
+
+    void loadAndReconcile();
 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [
+    accountStorageKey,
+    applySavedData,
+    userId,
+    writeLocalSnapshot,
+  ]);
 
   useEffect(() => {
     if (isLoading || !canPersist) return;
+    const dataJson = JSON.stringify(savedData);
+    if (dataJson === lastPersistedJsonRef.current) return;
 
-    AsyncStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        items,
-        shoppingList,
-        recentLocations,
-        recentStores,
-      } satisfies SavedData),
-    )
+    const localUpdatedAt = Date.now();
+    localUpdatedAtRef.current = localUpdatedAt;
+    lastPersistedJsonRef.current = dataJson;
+    writeLocalSnapshot(savedData, localUpdatedAt, cloudUpdatedAtRef.current)
       .then(() => setStorageError(null))
       .catch(() => {
         setStorageError(
           'Your changes could not be saved on this device. Please try again.',
         );
       });
-  }, [isLoading, canPersist, items, shoppingList, recentLocations, recentStores]);
+  }, [canPersist, isLoading, savedData, writeLocalSnapshot]);
+
+  useEffect(() => {
+    if (!canPersist || !cloudReady) return;
+    const dataJson = JSON.stringify(savedData);
+    if (dataJson === lastCloudSentJsonRef.current) return;
+
+    const timeout = setTimeout(() => {
+      lastCloudSentJsonRef.current = dataJson;
+      void enqueueCloudWrite(savedData).catch(() => {
+        setCloudSyncStatus('error');
+        setCloudSyncError(
+          'Cloud sync failed. Your changes are still saved on this device; tap Sync now to retry.',
+        );
+      });
+    }, 650);
+
+    return () => clearTimeout(timeout);
+  }, [canPersist, cloudReady, enqueueCloudWrite, savedData]);
+
+  const syncNow = useCallback(async () => {
+    if (!canPersist) return;
+    setCloudSyncStatus('syncing');
+    setCloudSyncError(null);
+
+    try {
+      if (cloudReady) {
+        const snapshot = currentDataRef.current;
+        lastCloudSentJsonRef.current = JSON.stringify(snapshot);
+        await enqueueCloudWrite(snapshot);
+        return;
+      }
+
+      const remote = await getHomeStock();
+      const cloud = remote.data ? normalizeSavedData(remote.data) : null;
+      const current = currentDataRef.current;
+      const merged = cloud ? mergeSavedData(current, cloud) : current;
+      const mergedJson = JSON.stringify(merged);
+      if (mergedJson !== JSON.stringify(current)) {
+        applySavedData(merged);
+        localUpdatedAtRef.current = Date.now();
+        lastPersistedJsonRef.current = mergedJson;
+      }
+
+      const saved = await saveHomeStock({ data: merged });
+      cloudUpdatedAtRef.current = saved.updatedAt
+        ? Date.parse(saved.updatedAt)
+        : Date.now();
+      setCloudReady(true);
+      setCloudSyncStatus('synced');
+      setCloudSyncError(null);
+      lastCloudSentJsonRef.current = mergedJson;
+      await writeLocalSnapshot(
+        merged,
+        localUpdatedAtRef.current || Date.now(),
+        cloudUpdatedAtRef.current,
+      );
+    } catch {
+      setCloudSyncStatus('error');
+      setCloudSyncError(
+        'Cloud sync failed. Your changes remain on this device; try again when you are online.',
+      );
+    }
+  }, [
+    applySavedData,
+    canPersist,
+    cloudReady,
+    enqueueCloudWrite,
+    writeLocalSnapshot,
+  ]);
 
   const saveItem = useCallback((draft: StockItemDraft, id?: string) => {
     const itemId = id ?? createId();
@@ -323,23 +679,32 @@ export function StockProvider({ children }: { children: ReactNode }) {
     setShoppingList((current) => current.filter((item) => !item.purchased));
   }, []);
 
-  const importItems = useCallback(
+  const importBackup = useCallback(
     (data: unknown) => {
+      const record = Array.isArray(data) ? {} : asRecord(data);
       const source =
         Array.isArray(data)
           ? data
-          : data && typeof data === 'object'
-            ? (data as Record<string, unknown>).items
-            : null;
+          : record.items;
       if (!Array.isArray(source) || source.length === 0) {
         throw new Error('The JSON must contain a non-empty items list.');
       }
 
-      const importedItems = source.map((item) => normalizeStockItem(item, true));
+      const importedItems = source.map((item) =>
+        normalizeStockItem(item, true),
+      );
+      const normalizedBackup = normalizeSavedData({
+        items: importedItems,
+        shoppingList: Array.isArray(record.shoppingList)
+          ? record.shoppingList
+          : [],
+        recentLocations: record.recentLocations,
+        recentStores: record.recentStores,
+      });
       const knownIds = new Set(items.map((item) => item.id));
       const newItems: StockItem[] = [];
       let skippedCount = 0;
-      for (const item of importedItems) {
+      for (const item of normalizedBackup.items) {
         if (knownIds.has(item.id)) {
           skippedCount += 1;
           continue;
@@ -348,58 +713,68 @@ export function StockProvider({ children }: { children: ReactNode }) {
         newItems.push(item);
       }
 
+      const availableIds = new Set([
+        ...items.map((item) => item.id),
+        ...newItems.map((item) => item.id),
+      ]);
+      const knownEntryIds = new Set(
+        shoppingList.map((entry) => entry.entryId),
+      );
+      const newShoppingList = normalizedBackup.shoppingList.filter((entry) => {
+        if (!availableIds.has(entry.id) || knownEntryIds.has(entry.entryId)) {
+          return false;
+        }
+        knownEntryIds.add(entry.entryId);
+        return true;
+      });
+
       setStorageError(null);
       setItems((current) => [...current, ...newItems]);
+      setShoppingList((current) => [...current, ...newShoppingList]);
       setRecentLocations((current) =>
-        newItems.reduce(
-          (next, item) => rememberPlace(item.location, next),
-          current,
-        ),
+        uniquePlaces([...normalizedBackup.recentLocations, ...current]),
       );
       setRecentStores((current) =>
-        newItems.reduce(
-          (next, item) =>
-            item.storeTypes.reduce(
-              (places, store) => rememberPlace(store, places),
-              next,
-            ),
-          current,
-        ),
+        uniquePlaces([...normalizedBackup.recentStores, ...current]),
       );
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      return { importedCount: newItems.length, skippedCount };
+      return {
+        importedCount: newItems.length,
+        skippedCount,
+        shoppingListAddedCount: newShoppingList.length,
+      };
     },
-    [items],
+    [items, shoppingList],
   );
 
   const value = useMemo(
     () => ({
-      items,
-      shoppingList,
-      recentLocations,
-      recentStores,
+      ...savedData,
       isLoading,
       storageError,
+      cloudSyncStatus,
+      cloudSyncError,
+      syncNow,
       saveItem,
       deleteItem,
       createBuyList,
       togglePurchased,
       clearPurchased,
-      importItems,
+      importBackup,
     }),
     [
-      items,
-      shoppingList,
-      recentLocations,
-      recentStores,
+      savedData,
       isLoading,
       storageError,
+      cloudSyncStatus,
+      cloudSyncError,
+      syncNow,
       saveItem,
       deleteItem,
       createBuyList,
       togglePurchased,
       clearPurchased,
-      importItems,
+      importBackup,
     ],
   );
 
