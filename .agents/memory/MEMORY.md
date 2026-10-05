@@ -1,2 +1,0 @@
-- [Home Stock testing](home-stock-testing.md) — the user tests the app in Expo Go on their phone and likes the current experience.
-- [Expo Go preview storage](expo-go-storage.md) — Replit Expo Go preview storage is temporary and does not migrate into a published app.

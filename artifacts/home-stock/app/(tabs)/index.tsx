@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -15,77 +15,11 @@ import { StockItemCard } from '@/components/StockItemCard';
 import { useColors } from '@/hooks/useColors';
 import { useStock } from '@/state/StockContext';
 
-type SortBy = 'date' | 'name';
-
-function FilterChip({
-  label,
-  selected,
-  onPress,
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  const colors = useColors();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      style={[
-        styles.filterChip,
-        {
-          backgroundColor: selected ? colors.primary : colors.card,
-          borderColor: selected ? colors.primary : colors.border,
-        },
-      ]}
-    >
-      <Text
-        style={[
-          styles.filterChipText,
-          { color: selected ? colors.primaryForeground : colors.foreground },
-        ]}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
 export default function StockHomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { items, shoppingList, isLoading, storageError } = useStock();
   const remainingCount = shoppingList.filter((item) => !item.purchased).length;
-  const [sortBy, setSortBy] = useState<SortBy>('date');
-  const [descending, setDescending] = useState(true);
-  const [locationFilter, setLocationFilter] = useState<string | null>(null);
-  const [storeFilter, setStoreFilter] = useState<string | null>(null);
-  const locations = useMemo(
-    () => [...new Set(items.map((item) => item.location))].sort((a, b) => a.localeCompare(b)),
-    [items],
-  );
-  const stores = useMemo(
-    () => [...new Set(items.flatMap((item) => item.storeTypes))].sort((a, b) => a.localeCompare(b)),
-    [items],
-  );
-  const visibleItems = useMemo(
-    () =>
-      items
-        .filter(
-          (item) =>
-            (!locationFilter || item.location === locationFilter) &&
-            (!storeFilter || item.storeTypes.includes(storeFilter)),
-        )
-        .sort((a, b) => {
-          const comparison =
-            sortBy === 'name'
-              ? a.name.localeCompare(b.name)
-              : a.createdAt - b.createdAt;
-          return descending ? -comparison : comparison;
-        }),
-    [items, locationFilter, storeFilter, sortBy, descending],
-  );
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -108,36 +42,20 @@ export default function StockHomeScreen() {
               HOME STOCK
             </Text>
           </View>
-          <View style={styles.topActions}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Import or export items"
-              onPress={() => router.push('/data-tools')}
-              style={({ pressed }) => [
-                styles.dataButton,
-                { backgroundColor: colors.card, borderColor: colors.border },
-                pressed && styles.pressed,
-              ]}
-              testID="data-tools-button"
-            >
-              <Feather name="repeat" size={15} color={colors.primary} />
-              <Text style={[styles.addText, { color: colors.primary }]}>Data</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Add an item"
-              onPress={() => router.push('/item-form')}
-              style={({ pressed }) => [
-                styles.addButton,
-                { backgroundColor: colors.card, borderColor: colors.border },
-                pressed && styles.pressed,
-              ]}
-              testID="add-item-button"
-            >
-              <Feather name="plus" size={19} color={colors.primary} />
-              <Text style={[styles.addText, { color: colors.primary }]}>Add item</Text>
-            </Pressable>
-          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add an item"
+            onPress={() => router.push('/item-form')}
+            style={({ pressed }) => [
+              styles.addButton,
+              { backgroundColor: colors.card, borderColor: colors.border },
+              pressed && styles.pressed,
+            ]}
+            testID="add-item-button"
+          >
+            <Feather name="plus" size={19} color={colors.primary} />
+            <Text style={[styles.addText, { color: colors.primary }]}>Add item</Text>
+          </Pressable>
         </View>
 
         <View style={styles.headingBlock}>
@@ -224,91 +142,6 @@ export default function StockHomeScreen() {
           </Pressable>
         </View>
 
-        {items.length > 0 ? (
-          <View style={[styles.filterPanel, { backgroundColor: colors.card }]}>
-            <View style={styles.filterSection}>
-              <Text style={[styles.filterLabel, { color: colors.mutedForeground }]}>
-                SORT BY
-              </Text>
-              <View style={styles.filterChips}>
-                <FilterChip
-                  label="Date added"
-                  selected={sortBy === 'date'}
-                  onPress={() => {
-                    setSortBy('date');
-                    setDescending(true);
-                  }}
-                />
-                <FilterChip
-                  label="Name"
-                  selected={sortBy === 'name'}
-                  onPress={() => {
-                    setSortBy('name');
-                    setDescending(false);
-                  }}
-                />
-                <FilterChip
-                  label={
-                    sortBy === 'date'
-                      ? descending
-                        ? 'Newest first'
-                        : 'Oldest first'
-                      : descending
-                        ? 'Z–A'
-                        : 'A–Z'
-                  }
-                  selected
-                  onPress={() => setDescending((current) => !current)}
-                />
-              </View>
-            </View>
-            <View style={styles.filterSection}>
-              <Text style={[styles.filterLabel, { color: colors.mutedForeground }]}>
-                FILTER BY STORAGE
-              </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={styles.filterChips}>
-                  <FilterChip
-                    label="All"
-                    selected={locationFilter === null}
-                    onPress={() => setLocationFilter(null)}
-                  />
-                  {locations.map((location) => (
-                    <FilterChip
-                      key={location}
-                      label={location}
-                      selected={locationFilter === location}
-                      onPress={() => setLocationFilter(location)}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
-            </View>
-            <View style={styles.filterSection}>
-              <Text style={[styles.filterLabel, { color: colors.mutedForeground }]}>
-                FILTER BY STORE
-              </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={styles.filterChips}>
-                  <FilterChip
-                    label="All"
-                    selected={storeFilter === null}
-                    onPress={() => setStoreFilter(null)}
-                  />
-                  {stores.map((store) => (
-                    <FilterChip
-                      key={store}
-                      label={store}
-                      selected={storeFilter === store}
-                      onPress={() => setStoreFilter(store)}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
-            </View>
-          </View>
-        ) : null}
-
         <View style={styles.sectionHeader}>
           <View>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
@@ -318,9 +151,9 @@ export default function StockHomeScreen() {
               Tap an item to update its details
             </Text>
           </View>
-          {visibleItems.length > 0 ? (
+          {items.length > 0 ? (
             <Text style={[styles.itemCount, { color: colors.mutedForeground }]}>
-              {visibleItems.length} of {items.length}
+              {items.length} {items.length === 1 ? 'item' : 'items'}
             </Text>
           ) : null}
         </View>
@@ -355,21 +188,9 @@ export default function StockHomeScreen() {
               </Text>
             </Pressable>
           </View>
-        ) : visibleItems.length === 0 ? (
-          <View style={[styles.emptyCard, { backgroundColor: colors.card }]}>
-            <View style={[styles.emptyIcon, { backgroundColor: colors.accent }]}>
-              <Feather name="filter" size={20} color={colors.primary} />
-            </View>
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              No items match these filters
-            </Text>
-            <Text style={[styles.emptyCopy, { color: colors.mutedForeground }]}>
-              Choose another storage place or store to see more items.
-            </Text>
-          </View>
         ) : (
           <View style={styles.itemsList}>
-            {visibleItems.map((item) => (
+            {items.map((item) => (
               <StockItemCard
                 key={item.id}
                 item={item}
@@ -396,7 +217,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  topActions: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   brandIcon: {
     height: 34,
@@ -415,7 +235,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 15,
   },
-  dataButton: { minHeight: 42, paddingHorizontal: 11, gap: 6, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 15 },
   addText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   headingBlock: { gap: 9, marginTop: 2 },
   eyebrow: { fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1.8 },
@@ -481,12 +300,6 @@ const styles = StyleSheet.create({
   errorText: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 16 },
   statsRow: { flexDirection: 'row', gap: 11 },
   statCard: { flex: 1, borderRadius: 18, padding: 15, gap: 4 },
-  filterPanel: { borderRadius: 18, padding: 14, gap: 13 },
-  filterSection: { gap: 7 },
-  filterLabel: { fontFamily: 'Inter_700Bold', fontSize: 8, letterSpacing: 1 },
-  filterChips: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  filterChip: { minHeight: 31, paddingHorizontal: 10, borderWidth: 1, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  filterChipText: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
   statValue: { fontFamily: 'Inter_700Bold', fontSize: 21 },
   statLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1 },
   sectionHeader: {

@@ -2,10 +2,8 @@ import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React from 'react';
 import {
-  Alert,
   Platform,
   Pressable,
-  Share,
   ScrollView,
   StyleSheet,
   Text,
@@ -80,28 +78,7 @@ export default function ShoppingListScreen() {
   const { shoppingList, items, togglePurchased, clearPurchased } = useStock();
   const activeItems = shoppingList.filter((item) => !item.purchased);
   const purchasedItems = shoppingList.filter((item) => item.purchased);
-  const storeGroups = [...new Set(shoppingList.map((item) => item.shoppingStoreType))];
-
-  function shareBuyList() {
-    const message = [
-      'Home Stock buy list',
-      '',
-      ...storeGroups.flatMap((store) => [
-        store,
-        ...shoppingList
-          .filter((item) => item.shoppingStoreType === store)
-          .map((item) => {
-            const quantity = `${item.restockQuantity} ${item.unit || (item.restockQuantity === 1 ? 'unit' : 'units')}`;
-            return `${item.purchased ? '✓' : '•'} ${item.name} — ${quantity} (${item.location})`;
-          }),
-        '',
-      ]),
-    ].join('\n').trim();
-
-    void Share.share({ message, title: 'Home Stock buy list' }).catch(() => {
-      Alert.alert('Could not share', 'Please try sharing your buy list again.');
-    });
-  }
+  const storeGroups = [...new Set(shoppingList.map((item) => item.storeType))];
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -204,24 +181,8 @@ export default function ShoppingListScreen() {
               </View>
             </View>
 
-            <Pressable
-              accessibilityRole="button"
-              onPress={shareBuyList}
-              style={({ pressed }) => [
-                styles.shareButton,
-                { backgroundColor: colors.secondary },
-                pressed && styles.pressed,
-              ]}
-              testID="share-buy-list-button"
-            >
-              <Feather name="share-2" size={15} color={colors.primary} />
-              <Text style={[styles.shareText, { color: colors.primary }]}>
-                Share buy list
-              </Text>
-            </Pressable>
-
             {storeGroups.map((storeType) => {
-              const group = shoppingList.filter((item) => item.shoppingStoreType === storeType);
+              const group = shoppingList.filter((item) => item.storeType === storeType);
               return (
                 <View key={storeType} style={styles.storeGroup}>
                   <View style={styles.storeHeading}>
@@ -238,9 +199,9 @@ export default function ShoppingListScreen() {
                   <View style={[styles.groupCard, { backgroundColor: colors.card }]}>
                     {group.map((item) => (
                       <BuyRow
-                        key={item.entryId}
+                        key={item.id}
                         item={item}
-                        onToggle={() => togglePurchased(item.entryId)}
+                        onToggle={() => togglePurchased(item.id)}
                       />
                     ))}
                   </View>
@@ -308,8 +269,6 @@ const styles = StyleSheet.create({
   progressIcon: { height: 36, width: 36, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   progressTrack: { position: 'absolute', left: 16, right: 16, bottom: 0, height: 3, borderBottomLeftRadius: 10, borderBottomRightRadius: 10, overflow: 'hidden' },
   progressFill: { height: 3, borderRadius: 3 },
-  shareButton: { minHeight: 44, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  shareText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   storeGroup: { gap: 9 },
   storeHeading: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 2 },
   storeIcon: { height: 26, width: 26, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
