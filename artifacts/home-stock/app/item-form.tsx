@@ -16,9 +16,6 @@ import { useColors } from '@/hooks/useColors';
 import { useStock, type StockItemDraft } from '@/state/StockContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const locationSuggestions = ['Pantry', 'Fridge', 'Freezer', 'Bathroom', 'Storage room'];
-const storeSuggestions = ['Grocery store', 'Drugstore', 'Fruit market', 'Pharmacy'];
-
 function ChoiceChips({
   options,
   value,
@@ -66,7 +63,14 @@ export default function ItemFormScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { itemId } = useLocalSearchParams<{ itemId?: string }>();
-  const { items, isLoading, saveItem, deleteItem } = useStock();
+  const {
+    items,
+    recentLocations,
+    recentStores,
+    isLoading,
+    saveItem,
+    deleteItem,
+  } = useStock();
   const existingItem = items.find((item) => item.id === itemId);
   const initialized = useRef(!itemId);
   const [name, setName] = useState(existingItem?.name ?? '');
@@ -78,7 +82,10 @@ export default function ItemFormScreen() {
   );
   const [unit, setUnit] = useState(existingItem?.unit ?? '');
   const [location, setLocation] = useState(existingItem?.location ?? '');
-  const [storeType, setStoreType] = useState(existingItem?.storeType ?? '');
+  const [storeTypes, setStoreTypes] = useState<string[]>(
+    existingItem?.storeTypes ?? [],
+  );
+  const [storeInput, setStoreInput] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -89,13 +96,29 @@ export default function ItemFormScreen() {
     setRestockQuantity(existingItem.restockQuantity.toString());
     setUnit(existingItem.unit);
     setLocation(existingItem.location);
-    setStoreType(existingItem.storeType);
+    setStoreTypes(existingItem.storeTypes);
   }, [existingItem]);
+
+  function addStore(value = storeInput) {
+    const cleanStore = value.trim();
+    if (!cleanStore) return;
+    setStoreTypes((current) =>
+      current.some((store) => store.toLocaleLowerCase() === cleanStore.toLocaleLowerCase())
+        ? current
+        : [...current, cleanStore],
+    );
+    setStoreInput('');
+    setError('');
+  }
+
+  function removeStore(storeToRemove: string) {
+    setStoreTypes((current) => current.filter((store) => store !== storeToRemove));
+  }
 
   function save() {
     const cleanName = name.trim();
     const cleanLocation = location.trim();
-    const cleanStore = storeType.trim();
+    const cleanStores = [...new Set(storeTypes.map((store) => store.trim()).filter(Boolean))];
     const minimum = Number(minimumQuantity);
     const restock = Number(restockQuantity);
 
@@ -111,7 +134,7 @@ export default function ItemFormScreen() {
       setError('Enter a whole number greater than zero for how much to buy.');
       return;
     }
-    if (!cleanLocation || !cleanStore) {
+    if (!cleanLocation || cleanStores.length === 0) {
       setError('Add where you keep this item and where you buy it.');
       return;
     }
@@ -122,7 +145,7 @@ export default function ItemFormScreen() {
       restockQuantity: restock,
       unit: unit.trim(),
       location: cleanLocation,
-      storeType: cleanStore,
+      storeTypes: cleanStores,
     };
     saveItem(draft, itemId);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -257,30 +280,90 @@ export default function ItemFormScreen() {
             testID="item-location-input"
             value={location}
           />
-          <ChoiceChips
-            options={locationSuggestions}
-            value={location}
-            onSelect={setLocation}
-          />
+          {recentLocations.length > 0 ? (
+            <>
+              <Text style={[styles.helperLabel, { color: colors.mutedForeground }]}>
+                RECENT LOCATIONS
+              </Text>
+              <ChoiceChips
+                options={recentLocations}
+                value={location}
+                onSelect={setLocation}
+              />
+            </>
+          ) : null}
         </View>
 
         <View style={styles.fieldGroup}>
           <Text style={[styles.label, { color: colors.foreground }]}>WHERE YOU BUY IT</Text>
-          <TextInput
-            accessibilityLabel="Store type"
-            autoCapitalize="sentences"
-            onChangeText={setStoreType}
-            placeholder="e.g. Grocery store"
-            placeholderTextColor={colors.mutedForeground}
-            style={fieldStyle}
-            testID="item-store-input"
-            value={storeType}
-          />
-          <ChoiceChips
-            options={storeSuggestions}
-            value={storeType}
-            onSelect={setStoreType}
-          />
+          <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>
+            Add every kind of store that sells this item.
+          </Text>
+          {storeTypes.length > 0 ? (
+            <View style={styles.chips}>
+              {storeTypes.map((store) => (
+                <Pressable
+                  key={store}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${store}`}
+                  onPress={() => removeStore(store)}
+                  style={[
+                    styles.selectedStoreChip,
+                    { backgroundColor: colors.primary },
+                  ]}
+                >
+                  <Text style={[styles.selectedStoreText, { color: colors.primaryForeground }]}>
+                    {store}
+                  </Text>
+                  <Feather name="x" size={13} color={colors.primaryForeground} />
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+          <View style={styles.storeEntryRow}>
+            <TextInput
+              accessibilityLabel="Add a store"
+              autoCapitalize="sentences"
+              onChangeText={setStoreInput}
+              onSubmitEditing={() => addStore()}
+              placeholder="e.g. Grocery store"
+              placeholderTextColor={colors.mutedForeground}
+              returnKeyType="done"
+              style={[fieldStyle, styles.storeInput]}
+              testID="item-store-input"
+              value={storeInput}
+            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Add store"
+              onPress={() => addStore()}
+              style={({ pressed }) => [
+                styles.addStoreButton,
+                { backgroundColor: colors.secondary },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Feather name="plus" size={17} color={colors.primary} />
+            </Pressable>
+          </View>
+          {recentStores.length > 0 ? (
+            <>
+              <Text style={[styles.helperLabel, { color: colors.mutedForeground }]}>
+                RECENT STORES
+              </Text>
+              <ChoiceChips
+                options={recentStores.filter(
+                  (store) =>
+                    !storeTypes.some(
+                      (selected) =>
+                        selected.toLocaleLowerCase() === store.toLocaleLowerCase(),
+                    ),
+                )}
+                value=""
+                onSelect={addStore}
+              />
+            </>
+          ) : null}
         </View>
 
         {error ? (
@@ -341,12 +424,19 @@ const styles = StyleSheet.create({
   subtitle: { fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18 },
   fieldGroup: { gap: 8 },
   label: { fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.2 },
+  helperLabel: { fontFamily: 'Inter_700Bold', fontSize: 8, letterSpacing: 1 },
+  fieldHint: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },
   input: { minHeight: 49, borderWidth: 1, borderRadius: 14, paddingHorizontal: 14, fontFamily: 'Inter_500Medium', fontSize: 14 },
   quantityRow: { flexDirection: 'row', gap: 12 },
   quantityField: { flex: 1 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 1 },
   chip: { minHeight: 31, justifyContent: 'center', borderWidth: 1, borderRadius: 11, paddingHorizontal: 10 },
   chipText: { fontFamily: 'Inter_500Medium', fontSize: 10 },
+  selectedStoreChip: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 11, paddingHorizontal: 10 },
+  selectedStoreText: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
+  storeEntryRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  storeInput: { flex: 1 },
+  addStoreButton: { width: 48, minHeight: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   errorMessage: { padding: 12, borderRadius: 13, flexDirection: 'row', alignItems: 'center', gap: 8 },
   errorText: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 16 },
   saveButton: { minHeight: 51, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 2 },

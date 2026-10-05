@@ -1,0 +1,1 @@
+- [Home Stock testing](home-stock-testing.md) — the user tests the app in Expo Go on their phone and likes the current experience.

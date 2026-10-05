@@ -44,7 +44,7 @@ export function StockItemCard({ item, onEdit }: Props) {
             style={[styles.meta, { color: colors.mutedForeground }]}
             numberOfLines={1}
           >
-            {item.storeType}
+            {item.storeTypes.join(', ')}
           </Text>
         </View>
       </View>

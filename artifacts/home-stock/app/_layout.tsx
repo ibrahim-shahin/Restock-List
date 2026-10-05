@@ -34,6 +34,7 @@ function RootLayoutNav() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="item-form" options={{ presentation: 'modal' }} />
       <Stack.Screen name="stock-check" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="data-tools" options={{ presentation: 'modal' }} />
     </Stack>
   );
 }
