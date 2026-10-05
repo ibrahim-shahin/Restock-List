@@ -23,9 +23,9 @@ export default function StockCheckScreen() {
   const [shortItems, setShortItems] = useState<string[]>([]);
   const [isComplete, setIsComplete] = useState(false);
 
-  const storeTypes = [...new Set(items.map((item) => item.storeType))];
+  const storeTypes = [...new Set(items.flatMap((item) => item.storeTypes))];
   const storeItems = selectedStoreType
-    ? items.filter((item) => item.storeType === selectedStoreType)
+    ? items.filter((item) => item.storeTypes.includes(selectedStoreType))
     : [];
   const currentItem = storeItems[currentIndex];
   const progress = storeItems.length
@@ -142,7 +142,7 @@ export default function StockCheckScreen() {
           </View>
           <View style={styles.storeOptions}>
             {storeTypes.map((storeType) => {
-              const count = items.filter((item) => item.storeType === storeType).length;
+              const count = items.filter((item) => item.storeTypes.includes(storeType)).length;
               return (
                 <Pressable
                   key={storeType}
