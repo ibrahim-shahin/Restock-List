@@ -147,7 +147,11 @@ export default function ItemFormScreen() {
       location: cleanLocation,
       storeTypes: cleanStores,
     };
-    saveItem(draft, itemId);
+    const savedId = saveItem(draft, itemId);
+    if (!savedId) {
+      setError('An item with this name is already in your stock. Try another name.');
+      return;
+    }
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     router.back();
   }
@@ -216,7 +220,10 @@ export default function ItemFormScreen() {
           <TextInput
             accessibilityLabel="Item name"
             autoCapitalize="sentences"
-            onChangeText={setName}
+            onChangeText={(value) => {
+              setName(value);
+              if (error) setError('');
+            }}
             placeholder="e.g. Milk"
             placeholderTextColor={colors.mutedForeground}
             returnKeyType="next"

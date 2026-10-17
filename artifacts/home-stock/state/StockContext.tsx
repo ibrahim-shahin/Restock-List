@@ -49,7 +49,7 @@ type StockContextValue = SavedData & {
   cloudSyncStatus: 'local' | 'syncing' | 'synced' | 'error';
   cloudSyncError: string | null;
   syncNow: () => Promise<void>;
-  saveItem: (draft: StockItemDraft, id?: string) => string;
+  saveItem: (draft: StockItemDraft, id?: string) => string | null;
   deleteItem: (id: string) => void;
   createBuyList: (itemIds: string[], storeType: string) => void;
   togglePurchased: (entryId: string) => void;
@@ -80,10 +80,23 @@ type LocalSnapshot = {
   localUpdatedAt: number;
   cloudUpdatedAt: number;
   isDirty: boolean;
+  needsIdMigration: boolean;
 };
 
-function createId() {
-  return `${Date.now().toString()}-${Math.random().toString(36).slice(2, 10)}`;
+function itemIdFromName(name: string): string {
+  return name.normalize('NFKC').replace(/\s+/gu, '').toLowerCase();
+}
+
+function assignUniqueItemId(name: string, usedIds: Set<string>): string {
+  const baseId = itemIdFromName(name);
+  let id = baseId;
+  let suffix = 2;
+  while (usedIds.has(id)) {
+    id = `${baseId}~${suffix}`;
+    suffix += 1;
+  }
+  usedIds.add(id);
+  return id;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -123,10 +136,73 @@ function readStoreTypes(record: Record<string, unknown>): string[] {
   return uniquePlaces(values);
 }
 
+function hasNonCanonicalItemIds(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  const items = Array.isArray(record.items) ? record.items : [];
+  const usedItemIds = new Set<string>();
+  const itemIdBySourceId = new Map<string, string>();
+  let hasNonCanonicalId = false;
+
+  for (const value of items) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      hasNonCanonicalId = true;
+      continue;
+    }
+    const item = value as Record<string, unknown>;
+    const name = typeof item.name === 'string' ? item.name.trim() : '';
+    if (!name) continue;
+    const expectedId = assignUniqueItemId(name, usedItemIds);
+    if (item.id !== expectedId) hasNonCanonicalId = true;
+    if (typeof item.id === 'string' && !itemIdBySourceId.has(item.id)) {
+      itemIdBySourceId.set(item.id, expectedId);
+    }
+  }
+
+  const seenEntryIds = new Set<string>();
+  const shoppingList = Array.isArray(record.shoppingList)
+    ? record.shoppingList
+    : [];
+  for (const value of shoppingList) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      hasNonCanonicalId = true;
+      continue;
+    }
+    const item = value as Record<string, unknown>;
+    const name = typeof item.name === 'string' ? item.name.trim() : '';
+    if (!name) continue;
+    const sourceId = typeof item.id === 'string' ? item.id : '';
+    const expectedId =
+      itemIdBySourceId.get(sourceId) ?? itemIdFromName(name);
+    const storeType =
+      typeof item.shoppingStoreType === 'string'
+        ? item.shoppingStoreType
+        : typeof item.storeType === 'string'
+          ? item.storeType
+          : readStoreTypes(item)[0];
+    if (!storeType) {
+      hasNonCanonicalId = true;
+      continue;
+    }
+    const expectedEntryId = JSON.stringify([expectedId, storeType]);
+    if (
+      item.id !== expectedId ||
+      item.entryId !== expectedEntryId ||
+      seenEntryIds.has(expectedEntryId)
+    ) {
+      hasNonCanonicalId = true;
+    }
+    seenEntryIds.add(expectedEntryId);
+  }
+
+  return hasNonCanonicalId;
+}
+
 function normalizeStockItem(
   value: unknown,
   imported = false,
   legacyCreatedAt = 0,
+  idOverride?: string,
 ): StockItem {
   const record = asRecord(value);
   const name = typeof record.name === 'string' ? record.name.trim() : '';
@@ -147,15 +223,8 @@ function normalizeStockItem(
     throw new Error(`“${name || 'An item'}” is missing valid stock details.`);
   }
 
-  const id = typeof record.id === 'string' && record.id.trim()
-    ? record.id
-    : imported
-      ? createId()
-      : '';
-  if (!id) throw new Error('A saved item is missing its ID.');
-
   return {
-    id,
+    id: idOverride ?? itemIdFromName(name),
     name,
     minimumQuantity,
     restockQuantity,
@@ -171,18 +240,34 @@ function normalizeStockItem(
   };
 }
 
-function normalizeSavedData(value: unknown): SavedData {
+function normalizeSavedData(value: unknown, imported = false): SavedData {
   const record = asRecord(value);
   if (!Array.isArray(record.items) || !Array.isArray(record.shoppingList)) {
     throw new Error('Your saved stock has an unexpected format.');
   }
 
-  const items = record.items.map((item, index) =>
-    normalizeStockItem(item, false, index),
-  );
-  const shoppingList = record.shoppingList.map((value) => {
+  const usedItemIds = new Set<string>();
+  const itemIdBySourceId = new Map<string, string>();
+  const items = record.items.map((value, index) => {
     const itemRecord = asRecord(value);
-    const item = normalizeStockItem(value);
+    const name = typeof itemRecord.name === 'string' ? itemRecord.name.trim() : '';
+    const id = assignUniqueItemId(name, usedItemIds);
+    if (typeof itemRecord.id === 'string' && !itemIdBySourceId.has(itemRecord.id)) {
+      itemIdBySourceId.set(itemRecord.id, id);
+    }
+    return normalizeStockItem(value, imported, index, id);
+  });
+  const shoppingListByEntryId = new Map<string, BuyListItem>();
+  record.shoppingList.forEach((value) => {
+    const itemRecord = asRecord(value);
+    const sourceId =
+      typeof itemRecord.id === 'string' ? itemRecord.id : '';
+    const item = normalizeStockItem(
+      value,
+      imported,
+      0,
+      itemIdBySourceId.get(sourceId),
+    );
     const shoppingStoreType =
       typeof itemRecord.shoppingStoreType === 'string'
         ? itemRecord.shoppingStoreType
@@ -192,16 +277,15 @@ function normalizeSavedData(value: unknown): SavedData {
     if (!shoppingStoreType) {
       throw new Error('A saved buy-list item is missing its store.');
     }
-    return {
+    const entryId = JSON.stringify([item.id, shoppingStoreType]);
+    shoppingListByEntryId.set(entryId, {
       ...item,
-      entryId:
-        typeof itemRecord.entryId === 'string'
-          ? itemRecord.entryId
-          : JSON.stringify([item.id, shoppingStoreType]),
+      entryId,
       shoppingStoreType,
       purchased: itemRecord.purchased === true,
-    };
+    });
   });
+  const shoppingList = [...shoppingListByEntryId.values()];
 
   const recentLocations = uniquePlaces(record.recentLocations);
   const recentStores = uniquePlaces(record.recentStores);
@@ -231,6 +315,7 @@ function readLocalSnapshot(value: string | null): LocalSnapshot | null {
     localUpdatedAt: timestampOrZero(record._localUpdatedAt),
     cloudUpdatedAt: timestampOrZero(record._cloudUpdatedAt),
     isDirty: record._dirty === true,
+    needsIdMigration: hasNonCanonicalItemIds(record),
   };
 }
 
@@ -517,6 +602,9 @@ export function StockProvider({
           return;
         }
 
+        const cloudNeedsIdMigration = remote.data
+          ? hasNonCanonicalItemIds(remote.data)
+          : false;
         const cloud = remote.data
           ? normalizeSavedData(remote.data)
           : null;
@@ -524,11 +612,20 @@ export function StockProvider({
           ? Date.parse(remote.updatedAt)
           : 0;
         let chosen = local;
-        let shouldUpload = cloud === null;
+        let shouldUpload =
+          cloud === null ||
+          cloudNeedsIdMigration ||
+          Boolean(localSnapshot?.needsIdMigration);
         let isDirty = shouldUpload;
 
         if (cloud) {
-          if (isLegacySource || localSnapshot?.isDirty || didMergeGuest) {
+          if (
+            isLegacySource ||
+            localSnapshot?.isDirty ||
+            localSnapshot?.needsIdMigration ||
+            cloudNeedsIdMigration ||
+            didMergeGuest
+          ) {
             chosen = mergeSavedData(local, cloud);
             shouldUpload = true;
             isDirty = true;
@@ -745,20 +842,64 @@ export function StockProvider({
   ]);
 
   const saveItem = useCallback((draft: StockItemDraft, id?: string) => {
-    const itemId = id ?? createId();
+    const name = draft.name.trim();
+    const existingItem = id
+      ? currentDataRef.current.items.find((item) => item.id === id)
+      : undefined;
+    const baseItemId = itemIdFromName(name);
+    const keepingExistingName =
+      existingItem !== undefined &&
+      itemIdFromName(existingItem.name) === baseItemId;
+    const duplicate = currentDataRef.current.items.some(
+      (item) =>
+        item.id !== existingItem?.id &&
+        itemIdFromName(item.name) === baseItemId,
+    );
+    if (!baseItemId || (duplicate && !keepingExistingName)) return null;
+    const itemId = keepingExistingName
+      ? existingItem.id
+      : assignUniqueItemId(
+          name,
+          new Set(
+            currentDataRef.current.items
+              .filter((item) => item.id !== existingItem?.id)
+              .map((item) => item.id),
+          ),
+        );
+
     setStorageError(null);
+    const savedItem: StockItem = {
+      ...draft,
+      name,
+      storeTypes: uniquePlaces(draft.storeTypes),
+      id: itemId,
+      createdAt: existingItem?.createdAt ?? Date.now(),
+    };
     setItems((current) => {
-      const existing = id ? current.find((item) => item.id === id) : undefined;
-      const savedItem: StockItem = {
-        ...draft,
-        storeTypes: uniquePlaces(draft.storeTypes),
-        id: itemId,
-        createdAt: existing?.createdAt ?? Date.now(),
-      };
-      return existing
-        ? current.map((item) => (item.id === id ? savedItem : item))
+      return existingItem
+        ? current.map((item) =>
+            item.id === existingItem.id ? savedItem : item,
+          )
         : [...current, savedItem];
     });
+    if (existingItem) {
+      setShoppingList((current) => {
+        const entries = new Map<string, BuyListItem>();
+        for (const entry of current) {
+          const updatedEntry =
+            entry.id === existingItem.id
+              ? {
+                  ...savedItem,
+                  entryId: JSON.stringify([itemId, entry.shoppingStoreType]),
+                  shoppingStoreType: entry.shoppingStoreType,
+                  purchased: entry.purchased,
+                }
+              : entry;
+          entries.set(updatedEntry.entryId, updatedEntry);
+        }
+        return [...entries.values()];
+      });
+    }
     setRecentLocations((current) => rememberPlace(draft.location, current));
     setRecentStores((current) =>
       draft.storeTypes.reduce(
@@ -843,31 +984,50 @@ export function StockProvider({
         throw new Error('The JSON does not contain any saved Home Stock data.');
       }
 
-      const importedItems = source.map((item) =>
-        normalizeStockItem(item, true),
-      );
       const normalizedBackup = normalizeSavedData({
-        items: importedItems,
+        items: source,
         shoppingList: listSource,
         recentLocations: record.recentLocations,
         recentStores: record.recentStores,
-      });
+      }, true);
       const knownIds = new Set(items.map((item) => item.id));
+      const itemsByName = new Map(
+        items.map((item) => [itemIdFromName(item.name), item] as const),
+      );
+      const importedItemIdByName = new Map<string, string>();
       const newItems: StockItem[] = [];
       let skippedCount = 0;
       for (const item of normalizedBackup.items) {
+        const nameKey = itemIdFromName(item.name);
+        const existing = itemsByName.get(nameKey);
+        if (existing) {
+          skippedCount += 1;
+          importedItemIdByName.set(nameKey, existing.id);
+          continue;
+        }
         if (knownIds.has(item.id)) {
           skippedCount += 1;
           continue;
         }
         knownIds.add(item.id);
+        itemsByName.set(nameKey, item);
+        importedItemIdByName.set(nameKey, item.id);
         newItems.push(item);
       }
 
+      const remappedShoppingList = normalizedBackup.shoppingList.map((entry) => {
+        const itemId = importedItemIdByName.get(itemIdFromName(entry.name));
+        if (!itemId) return entry;
+        return {
+          ...entry,
+          id: itemId,
+          entryId: JSON.stringify([itemId, entry.shoppingStoreType]),
+        };
+      });
       const knownEntryIds = new Set(
         shoppingList.map((entry) => entry.entryId),
       );
-      const newShoppingList = normalizedBackup.shoppingList.filter((entry) => {
+      const newShoppingList = remappedShoppingList.filter((entry) => {
         if (knownEntryIds.has(entry.entryId)) {
           return false;
         }
