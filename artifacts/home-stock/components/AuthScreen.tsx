@@ -81,11 +81,13 @@ export function AuthButton({
   onPress,
   disabled = false,
   secondary = false,
+  testID,
 }: {
   title: string;
   onPress: () => void;
   disabled?: boolean;
   secondary?: boolean;
+  testID?: string;
 }) {
   const colors = useColors();
   return (
@@ -93,6 +95,7 @@ export function AuthButton({
       accessibilityRole="button"
       disabled={disabled}
       onPress={onPress}
+      testID={testID}
       style={({ pressed }) => [
         styles.button,
         {
@@ -117,15 +120,18 @@ export function AuthButton({
 export function AuthLink({
   title,
   onPress,
+  testID,
 }: {
   title: string;
   onPress: () => void;
+  testID?: string;
 }) {
   const colors = useColors();
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
+      testID={testID}
       style={({ pressed }) => [styles.link, { opacity: pressed ? 0.65 : 1 }]}
     >
       <Text style={[styles.linkText, { color: colors.primary }]}>{title}</Text>

@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { ClerkLoaded, ClerkProvider, useAuth } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { setAuthTokenGetter, setBaseUrl } from '@workspace/api-client-react';
+import { setBaseUrl } from '@workspace/api-client-react';
 import {
   ActivityIndicator,
   Text,
@@ -37,12 +37,7 @@ const queryClient = new QueryClient();
 
 function RootLayoutNav() {
   const colors = useColors();
-  const { getToken, isLoaded, isSignedIn, userId } = useAuth();
-
-  useEffect(() => {
-    setAuthTokenGetter(isSignedIn ? () => getToken() : null);
-    return () => setAuthTokenGetter(null);
-  }, [getToken, isSignedIn]);
+  const { isLoaded, isSignedIn, userId } = useAuth();
 
   if (!isLoaded) {
     return (
@@ -70,35 +65,17 @@ function RootLayoutNav() {
   } as const;
 
   return (
-    <StockProviderGate isSignedIn={isSignedIn === true} userId={userId}>
+    <StockProvider
+      key={isSignedIn && userId ? userId : 'guest'}
+      userId={isSignedIn ? userId ?? null : null}
+    >
       <Stack screenOptions={screenOptions}>
-        <Stack.Protected guard={!isSignedIn}>
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        </Stack.Protected>
-        <Stack.Protected guard={isSignedIn === true}>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="item-form" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="stock-check" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="data-tools" options={{ presentation: 'modal' }} />
-        </Stack.Protected>
+        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="item-form" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="stock-check" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="data-tools" options={{ presentation: 'modal' }} />
       </Stack>
-    </StockProviderGate>
-  );
-}
-
-function StockProviderGate({
-  children,
-  userId,
-  isSignedIn,
-}: {
-  children: React.ReactNode;
-  userId: string | null | undefined;
-  isSignedIn: boolean;
-}) {
-  if (!isSignedIn) return children;
-  return (
-    <StockProvider key={userId ?? 'account'} userId={userId ?? ''}>
-      {children}
     </StockProvider>
   );
 }

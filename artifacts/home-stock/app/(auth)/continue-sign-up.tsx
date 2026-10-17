@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
-import { View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import { Pressable, Text, View } from 'react-native';
 import { useSignUp } from '@clerk/expo';
 import {
   AuthButton,
@@ -8,6 +9,7 @@ import {
   AuthMessage,
   AuthScreen,
 } from '@/components/AuthScreen';
+import { useColors } from '@/hooks/useColors';
 
 function fieldKey(field: string): string {
   return field.replace(/([-_][a-z])/g, (match) =>
@@ -29,13 +31,21 @@ function messageFromError(error: unknown, fallback: string): string {
 
 export default function ContinueSignUpScreen() {
   const router = useRouter();
+  const colors = useColors();
   const { signUp, fetchStatus } = useSignUp();
   const fields = useMemo(
     () => (signUp.status === 'missing_requirements' ? signUp.missingFields : []),
     [signUp],
   );
   const [values, setValues] = useState<Record<string, string>>({});
+  const [legalAccepted, setLegalAccepted] = useState(false);
   const [message, setMessage] = useState('');
+
+  const requiredValuesPresent = fields.every((field) =>
+    field === 'legal_accepted'
+      ? legalAccepted
+      : Boolean(values[field]?.trim()),
+  );
 
   async function continueAccount() {
     setMessage('');
@@ -43,7 +53,7 @@ export default function ContinueSignUpScreen() {
       const updates: Record<string, unknown> = {};
       for (const field of fields) {
         if (field === 'legal_accepted') {
-          updates.legalAccepted = true;
+          updates.legalAccepted = legalAccepted;
         } else {
           updates[fieldKey(field)] = values[field] ?? '';
         }
@@ -79,23 +89,50 @@ export default function ContinueSignUpScreen() {
       subtitle="Enter the remaining details required to create your account."
     >
       {fields.map((field) => (
-        <AuthField
-          key={field}
-          label={field.replaceAll('_', ' ')}
-          value={values[field] ?? ''}
-          onChangeText={(value) =>
-            setValues((current) => ({ ...current, [field]: value }))
-          }
-          autoCapitalize="words"
-          placeholder={`Enter ${field.replaceAll('_', ' ')}`}
-        />
+        field === 'legal_accepted' ? (
+          <Pressable
+            key={field}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: legalAccepted }}
+            onPress={() => setLegalAccepted((current) => !current)}
+            style={{
+              minHeight: 44,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 10,
+            }}
+            testID="legal-accepted-checkbox"
+          >
+            <Feather
+              name={legalAccepted ? 'check-square' : 'square'}
+              size={18}
+              color={colors.primary}
+            />
+            <Text style={{ color: colors.foreground, fontSize: 12 }}>
+              I accept the required terms
+            </Text>
+          </Pressable>
+        ) : (
+          <AuthField
+            key={field}
+            label={field.replaceAll('_', ' ')}
+            testID={`${field}-input`}
+            value={values[field] ?? ''}
+            onChangeText={(value) =>
+              setValues((current) => ({ ...current, [field]: value }))
+            }
+            autoCapitalize="words"
+            placeholder={`Enter ${field.replaceAll('_', ' ')}`}
+          />
+        )
       ))}
       {message ? <AuthMessage>{message}</AuthMessage> : null}
       <View nativeID="clerk-captcha" />
       <AuthButton
         title={fetchStatus === 'fetching' ? 'Saving…' : 'Continue'}
         onPress={() => void continueAccount()}
-        disabled={fetchStatus === 'fetching'}
+        disabled={fetchStatus === 'fetching' || !requiredValuesPresent}
+        testID="continue-sign-up-button"
       />
     </AuthScreen>
   );

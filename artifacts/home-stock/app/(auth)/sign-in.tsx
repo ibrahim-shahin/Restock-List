@@ -170,6 +170,7 @@ export default function SignInScreen() {
         <>
           <AuthField
             label="Email verification code"
+            testID="sign-in-verification-code-input"
             value={code}
             onChangeText={setCode}
             keyboardType="number-pad"
@@ -181,6 +182,7 @@ export default function SignInScreen() {
             title={fetching ? 'Verifying…' : 'Verify and continue'}
             onPress={() => void verifyCode()}
             disabled={fetching || !code.trim()}
+            testID="verify-sign-in-code-button"
           />
           <AuthLink
             title="Use a different account"
@@ -190,6 +192,7 @@ export default function SignInScreen() {
               setMessage('');
               signIn.reset();
             }}
+            testID="different-account-link"
           />
         </>
       ) : (
@@ -199,12 +202,14 @@ export default function SignInScreen() {
             onPress={() => void signInWithGoogle()}
             disabled={fetching}
             secondary
+            testID="google-sign-in-button"
           />
           <Text style={{ color: colors.mutedForeground, textAlign: 'center', fontSize: 11 }}>
             or continue with email
           </Text>
           <AuthField
             label="Email address"
+            testID="sign-in-email-input"
             value={emailAddress}
             onChangeText={setEmailAddress}
             autoCapitalize="none"
@@ -216,6 +221,7 @@ export default function SignInScreen() {
           />
           <AuthField
             label="Password"
+            testID="sign-in-password-input"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -232,10 +238,12 @@ export default function SignInScreen() {
               !emailAddress.trim() ||
               !password
             }
+            testID="sign-in-button"
           />
           <AuthLink
             title="Create an account"
             onPress={() => router.push('/(auth)/sign-up')}
+            testID="create-account-link"
           />
         </>
       )}
@@ -250,6 +258,11 @@ export default function SignInScreen() {
       >
         Your inventory is private to your account.
       </Text>
+      <AuthLink
+        title="Continue without an account"
+        onPress={() => router.replace('/(tabs)')}
+        testID="continue-as-guest-link"
+      />
     </AuthScreen>
   );
 }

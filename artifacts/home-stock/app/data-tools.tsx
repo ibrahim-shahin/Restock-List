@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useClerk, useUser } from '@clerk/expo';
+import { useAuth, useClerk, useUser } from '@clerk/expo';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useColors } from '@/hooks/useColors';
 import { useStock } from '@/state/StockContext';
@@ -31,8 +31,10 @@ export default function DataToolsScreen() {
     cloudSyncError,
     syncNow,
   } = useStock();
+  const { isSignedIn } = useAuth();
   const { user } = useUser();
   const { signOut } = useClerk();
+  const accountSignedIn = isSignedIn === true;
   const [jsonText, setJsonText] = useState('');
   const [error, setError] = useState('');
 
@@ -125,82 +127,129 @@ export default function DataToolsScreen() {
             Keep a copy of your stock
           </Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            Your account syncs automatically. You can also export a complete JSON backup or import one here.
+            {accountSignedIn
+              ? 'Your account syncs automatically. You can also export a complete JSON backup or import one here.'
+              : 'Sign-in is optional. Your guest stock stays on this device; sign in later to sync it across devices.'}
           </Text>
         </View>
 
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-            Cloud sync
-          </Text>
-          <Text style={[styles.cardCopy, { color: colors.mutedForeground }]}>
-            Signed in as {user?.primaryEmailAddress?.emailAddress ?? 'your account'}.
-          </Text>
-          <Text
-            accessibilityLiveRegion="polite"
-            style={[
-              styles.syncStatus,
-              {
-                color:
-                  cloudSyncStatus === 'error'
-                    ? colors.destructive
-                    : colors.mutedForeground,
-              },
-            ]}
-          >
-            {cloudSyncError ??
-              (cloudSyncStatus === 'syncing'
-                ? 'Syncing your stock…'
-                : 'Your latest stock is saved to your account.')}
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            disabled={isLoading || cloudSyncStatus === 'syncing'}
-            onPress={() => void syncNow()}
-            style={({ pressed }) => [
-              styles.secondaryButton,
-              {
-                backgroundColor: colors.secondary,
-                opacity:
-                  isLoading || cloudSyncStatus === 'syncing'
-                    ? 0.5
-                    : pressed
-                      ? 0.8
-                      : 1,
-              },
-            ]}
-          >
-            <Feather name="refresh-cw" size={16} color={colors.primary} />
-            <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>
-              {cloudSyncStatus === 'syncing' ? 'Syncing…' : 'Sync now'}
+        {accountSignedIn ? (
+          <View style={[styles.card, { backgroundColor: colors.card }]}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+              Cloud sync
             </Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() =>
-              Alert.alert(
-                'Sign out?',
-                'Your saved stock stays on this device and in your account.',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Sign out',
-                    style: 'destructive',
-                    onPress: () => void signOut(),
-                  },
-                ],
-              )
-            }
-            style={({ pressed }) => [
-              styles.textButton,
-              { opacity: pressed ? 0.65 : 1 },
-            ]}
-          >
-            <Text style={[styles.textButtonText, { color: colors.mutedForeground }]}>
-              Sign out
+            <Text style={[styles.cardCopy, { color: colors.mutedForeground }]}>
+              Signed in as {user?.primaryEmailAddress?.emailAddress ?? 'your account'}.
             </Text>
-          </Pressable>
-        </View>
+            <Text
+              accessibilityLiveRegion="polite"
+              style={[
+                styles.syncStatus,
+                {
+                  color:
+                    cloudSyncStatus === 'error'
+                      ? colors.destructive
+                      : colors.mutedForeground,
+                },
+              ]}
+            >
+              {cloudSyncError ??
+                (cloudSyncStatus === 'syncing'
+                  ? 'Syncing your stock…'
+                  : 'Your latest stock is saved to your account.')}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              disabled={isLoading || cloudSyncStatus === 'syncing'}
+              onPress={() => void syncNow()}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                {
+                  backgroundColor: colors.secondary,
+                  opacity:
+                    isLoading || cloudSyncStatus === 'syncing'
+                      ? 0.5
+                      : pressed
+                        ? 0.8
+                        : 1,
+                },
+              ]}
+              testID="sync-now-button"
+            >
+              <Feather name="refresh-cw" size={16} color={colors.primary} />
+              <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>
+                {cloudSyncStatus === 'syncing' ? 'Syncing…' : 'Sync now'}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() =>
+                Alert.alert(
+                  'Sign out?',
+                  'Your account stock stays saved to your account. Guest mode will not show account-only changes.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Sign out',
+                      style: 'destructive',
+                      onPress: () => void signOut(),
+                    },
+                  ],
+                )
+              }
+              style={({ pressed }) => [
+                styles.textButton,
+                { opacity: pressed ? 0.65 : 1 },
+              ]}
+              testID="sign-out-button"
+            >
+              <Text style={[styles.textButtonText, { color: colors.mutedForeground }]}>
+                Sign out
+              </Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={[styles.card, { backgroundColor: colors.card }]}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+              Sync across your devices
+            </Text>
+            <Text style={[styles.cardCopy, { color: colors.mutedForeground }]}>
+              A guest list can be linked to one account. Sign in to sync it across devices; account-only changes stay private.
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              disabled={isLoading}
+              onPress={() => router.push('/(auth)/sign-in')}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                {
+                  backgroundColor: colors.primary,
+                  opacity: isLoading ? 0.5 : pressed ? 0.85 : 1,
+                },
+              ]}
+              testID="guest-sign-in-button"
+            >
+              <Feather name="log-in" size={16} color={colors.primaryForeground} />
+              <Text style={[styles.primaryButtonText, { color: colors.primaryForeground }]}>
+                Sign in
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={isLoading}
+              onPress={() => router.push('/(auth)/sign-up')}
+              style={({ pressed }) => [
+                styles.textButton,
+                { opacity: isLoading ? 0.5 : pressed ? 0.65 : 1 },
+              ]}
+              testID="guest-create-account-button"
+            >
+              <Text style={[styles.textButtonText, { color: colors.primary }]}>
+                Create an account
+              </Text>
+            </Pressable>
+          </View>
+        )}
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>
@@ -300,7 +349,9 @@ export default function DataToolsScreen() {
         </View>
 
         <Text style={[styles.privacyNote, { color: colors.mutedForeground }]}>
-          Your stock is synced to this account and cached on this device. Export JSON for a portable backup.
+          {accountSignedIn
+            ? 'Your stock is synced to this account and cached on this device. Export JSON for a portable backup.'
+            : 'Guest stock is stored only on this device. Export JSON for a portable backup.'}
         </Text>
       </KeyboardAwareScrollViewCompat>
     </View>

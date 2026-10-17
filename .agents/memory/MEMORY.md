@@ -1,2 +1,4 @@
 - [Home Stock testing](home-stock-testing.md) — the user tests the app in Expo Go on their phone and likes the current experience.
 - [Expo Go preview storage](expo-go-storage.md) — Replit Expo Go preview storage is temporary and does not migrate into a published app.
+- [Expo Router auth gates](expo-router-auth-gate.md) — keep the root navigator mounted and guard routes inside the navigator to avoid a blank initial preview.
+- [Home Stock guest mode](home-stock-guest-mode.md) — guest inventory is local-only and can be linked to one account without exposing account-only changes.

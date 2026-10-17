@@ -98,6 +98,7 @@ export default function SignUpScreen() {
         <>
           <AuthField
             label="Email verification code"
+            testID="sign-up-verification-code-input"
             value={code}
             onChangeText={setCode}
             keyboardType="number-pad"
@@ -109,16 +110,19 @@ export default function SignUpScreen() {
             title={fetchStatus === 'fetching' ? 'Verifying…' : 'Verify email'}
             onPress={() => void verifyEmail()}
             disabled={fetchStatus === 'fetching' || !code.trim()}
+            testID="verify-sign-up-code-button"
           />
           <AuthLink
             title="Send a new code"
             onPress={() => void signUp.verifications.sendEmailCode()}
+            testID="resend-sign-up-code-link"
           />
         </>
       ) : (
         <>
           <AuthField
             label="Email address"
+            testID="sign-up-email-input"
             value={emailAddress}
             onChangeText={setEmailAddress}
             autoCapitalize="none"
@@ -130,6 +134,7 @@ export default function SignUpScreen() {
           />
           <AuthField
             label="Password"
+            testID="sign-up-password-input"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -146,10 +151,12 @@ export default function SignUpScreen() {
               !emailAddress.trim() ||
               !password
             }
+            testID="create-account-button"
           />
           <AuthLink
             title="Already have an account? Sign in"
             onPress={() => router.replace('/(auth)/sign-in')}
+            testID="sign-in-link"
           />
         </>
       )}

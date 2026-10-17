@@ -111,7 +111,7 @@ export default function StockHomeScreen() {
           <View style={styles.topActions}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Import or export items"
+              accessibilityLabel="Account and data options"
               onPress={() => router.push('/data-tools')}
               style={({ pressed }) => [
                 styles.dataButton,
@@ -121,7 +121,7 @@ export default function StockHomeScreen() {
               testID="data-tools-button"
             >
               <Feather name="repeat" size={15} color={colors.primary} />
-              <Text style={[styles.addText, { color: colors.primary }]}>Data</Text>
+              <Text style={[styles.addText, { color: colors.primary }]}>Account</Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"

@@ -1,7 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '@clerk/expo';
 import {
   getHomeStock,
   saveHomeStock,
+  setAuthTokenGetter,
 } from '@workspace/api-client-react';
 import * as Haptics from 'expo-haptics';
 import React, {
@@ -44,7 +46,7 @@ type SavedData = {
 type StockContextValue = SavedData & {
   isLoading: boolean;
   storageError: string | null;
-  cloudSyncStatus: 'syncing' | 'synced' | 'error';
+  cloudSyncStatus: 'local' | 'syncing' | 'synced' | 'error';
   cloudSyncError: string | null;
   syncNow: () => Promise<void>;
   saveItem: (draft: StockItemDraft, id?: string) => string;
@@ -61,6 +63,9 @@ type StockContextValue = SavedData & {
 
 const STORAGE_KEY = 'home-stock:v1';
 const LEGACY_OWNER_KEY = 'home-stock:legacy-owner:v1';
+const GUEST_STORAGE_KEY = 'home-stock:guest:v1';
+const GUEST_OWNER_KEY = 'home-stock:guest-owner:v1';
+const GUEST_MIGRATION_KEY_PREFIX = 'home-stock:guest-migrated:v1:';
 const StockContext = createContext<StockContextValue | null>(null);
 const MAX_RECENT_PLACES = 10;
 const EMPTY_SAVED_DATA: SavedData = {
@@ -74,6 +79,7 @@ type LocalSnapshot = {
   data: SavedData;
   localUpdatedAt: number;
   cloudUpdatedAt: number;
+  isDirty: boolean;
 };
 
 function createId() {
@@ -224,24 +230,16 @@ function readLocalSnapshot(value: string | null): LocalSnapshot | null {
     data: normalizeSavedData(record),
     localUpdatedAt: timestampOrZero(record._localUpdatedAt),
     cloudUpdatedAt: timestampOrZero(record._cloudUpdatedAt),
+    isDirty: record._dirty === true,
   };
-}
-
-function hasSavedContent(data: SavedData): boolean {
-  return (
-    data.items.length > 0 ||
-    data.shoppingList.length > 0 ||
-    data.recentLocations.length > 0 ||
-    data.recentStores.length > 0
-  );
 }
 
 function mergeSavedData(local: SavedData, cloud: SavedData): SavedData {
   const items = new Map<string, StockItem>();
-  for (const item of [...local.items, ...cloud.items]) items.set(item.id, item);
+  for (const item of [...cloud.items, ...local.items]) items.set(item.id, item);
 
   const shoppingList = new Map<string, BuyListItem>();
-  for (const entry of [...local.shoppingList, ...cloud.shoppingList]) {
+  for (const entry of [...cloud.shoppingList, ...local.shoppingList]) {
     shoppingList.set(entry.entryId, entry);
   }
 
@@ -261,9 +259,12 @@ export function StockProvider({
   userId,
 }: {
   children: ReactNode;
-  userId: string;
+  userId: string | null;
 }) {
-  const accountStorageKey = `${STORAGE_KEY}:account:${userId}`;
+  const { getToken } = useAuth();
+  const storageKey = userId
+    ? `${STORAGE_KEY}:account:${userId}`
+    : GUEST_STORAGE_KEY;
   const [items, setItems] = useState<StockItem[]>([]);
   const [shoppingList, setShoppingList] = useState<BuyListItem[]>([]);
   const [recentLocations, setRecentLocations] = useState<string[]>([]);
@@ -271,7 +272,9 @@ export function StockProvider({
   const [isLoading, setIsLoading] = useState(true);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [cloudSyncStatus, setCloudSyncStatus] =
-    useState<StockContextValue['cloudSyncStatus']>('syncing');
+    useState<StockContextValue['cloudSyncStatus']>(
+      userId ? 'syncing' : 'local',
+    );
   const [cloudSyncError, setCloudSyncError] = useState<string | null>(null);
   const [cloudReady, setCloudReady] = useState(false);
   const [canPersist, setCanPersist] = useState(false);
@@ -282,6 +285,11 @@ export function StockProvider({
   const lastCloudSentJsonRef = useRef('');
   const localWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
   const cloudWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingGuestMigrationRef = useRef<{
+    userId: string;
+    baselineKey: string;
+    dataJson: string;
+  } | null>(null);
 
   const savedData = useMemo(
     () => ({ items, shoppingList, recentLocations, recentStores }),
@@ -297,23 +305,50 @@ export function StockProvider({
   }, []);
 
   const writeLocalSnapshot = useCallback(
-    (data: SavedData, localUpdatedAt: number, cloudUpdatedAt: number) => {
+    (
+      data: SavedData,
+      localUpdatedAt: number,
+      cloudUpdatedAt: number,
+      isDirty: boolean,
+    ) => {
       const payload = JSON.stringify({
         ...data,
         _localUpdatedAt: localUpdatedAt,
         _cloudUpdatedAt: cloudUpdatedAt,
+        _dirty: isDirty,
       });
       const write = localWriteQueueRef.current
         .catch(() => undefined)
-        .then(() => AsyncStorage.setItem(accountStorageKey, payload));
+        .then(() => AsyncStorage.setItem(storageKey, payload));
       localWriteQueueRef.current = write;
       return write;
     },
-    [accountStorageKey],
+    [storageKey],
   );
+
+  const claimPendingGuestMigration = useCallback(async () => {
+    const pending = pendingGuestMigrationRef.current;
+    if (!userId || !pending || pending.userId !== userId) return;
+    await AsyncStorage.setItem(GUEST_OWNER_KEY, userId).catch(() => {});
+  }, [userId]);
+
+  const completePendingGuestMigration = useCallback(async () => {
+    const pending = pendingGuestMigrationRef.current;
+    if (!userId || !pending || pending.userId !== userId) return;
+    try {
+      await AsyncStorage.setItem(GUEST_OWNER_KEY, userId);
+      await AsyncStorage.setItem(pending.baselineKey, pending.dataJson);
+      await AsyncStorage.removeItem(GUEST_STORAGE_KEY);
+      pendingGuestMigrationRef.current = null;
+    } catch {
+      // The account copy is already safe. Keeping the pending marker means the
+      // next successful sync can retry without exposing it to another account.
+    }
+  }, [userId]);
 
   const enqueueCloudWrite = useCallback(
     (data: SavedData) => {
+      if (!userId) return Promise.resolve();
       const dataJson = JSON.stringify(data);
       const write = cloudWriteQueueRef.current
         .catch(() => undefined)
@@ -324,6 +359,7 @@ export function StockProvider({
             ? Date.parse(saved.updatedAt)
             : Date.now();
           cloudUpdatedAtRef.current = cloudUpdatedAt;
+          await completePendingGuestMigration();
           setCloudSyncStatus('synced');
           setCloudSyncError(null);
           if (JSON.stringify(currentDataRef.current) === dataJson) {
@@ -331,14 +367,24 @@ export function StockProvider({
               data,
               localUpdatedAtRef.current || Date.now(),
               cloudUpdatedAt,
+              false,
             );
           }
         });
       cloudWriteQueueRef.current = write;
       return write;
     },
-    [writeLocalSnapshot],
+    [completePendingGuestMigration, userId, writeLocalSnapshot],
   );
+
+  useEffect(() => {
+    if (!userId) {
+      setAuthTokenGetter(null);
+      return;
+    }
+    setAuthTokenGetter(() => getToken());
+    return () => setAuthTokenGetter(null);
+  }, [getToken, userId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -346,13 +392,63 @@ export function StockProvider({
     let local = EMPTY_SAVED_DATA;
     let localSnapshot: LocalSnapshot | null = null;
     let isLegacySource = false;
+    let didMergeGuest = false;
 
     async function loadAndReconcile() {
       try {
-        const [accountValue, legacyOwner, legacyValue] = await Promise.all([
-          AsyncStorage.getItem(accountStorageKey),
+        if (!userId) {
+          const [guestValue, legacyOwner, legacyValue] = await Promise.all([
+            AsyncStorage.getItem(GUEST_STORAGE_KEY),
+            AsyncStorage.getItem(LEGACY_OWNER_KEY),
+            AsyncStorage.getItem(STORAGE_KEY),
+          ]);
+          localSnapshot = readLocalSnapshot(guestValue);
+          if (localSnapshot) {
+            local = localSnapshot.data;
+          } else if (!legacyOwner && legacyValue) {
+            local = normalizeSavedData(JSON.parse(legacyValue));
+            isLegacySource = true;
+          }
+          didLoadLocal = true;
+          if (!isMounted) return;
+
+          const localUpdatedAt =
+            localSnapshot?.localUpdatedAt || Date.now();
+          localUpdatedAtRef.current = localUpdatedAt;
+          cloudUpdatedAtRef.current = 0;
+          lastPersistedJsonRef.current = JSON.stringify(local);
+          lastCloudSentJsonRef.current = '';
+          applySavedData(local);
+          setCloudReady(false);
+          setCloudSyncStatus('local');
+          setCloudSyncError(null);
+          await writeLocalSnapshot(local, localUpdatedAt, 0, false).catch(
+            () => {
+              setStorageError(
+                'Your stock could not be saved on this device. Please try again.',
+              );
+            },
+          );
+          if (isMounted) {
+            setCanPersist(true);
+            setIsLoading(false);
+          }
+          return;
+        }
+
+        const guestBaselineKey = `${GUEST_MIGRATION_KEY_PREFIX}${userId}`;
+        const [
+          accountValue,
+          legacyOwner,
+          legacyValue,
+          guestValue,
+          guestOwner,
+        ] = await Promise.all([
+          AsyncStorage.getItem(storageKey),
           AsyncStorage.getItem(LEGACY_OWNER_KEY),
           AsyncStorage.getItem(STORAGE_KEY),
+          AsyncStorage.getItem(GUEST_STORAGE_KEY),
+          AsyncStorage.getItem(GUEST_OWNER_KEY),
         ]);
 
         localSnapshot = readLocalSnapshot(accountValue);
@@ -361,6 +457,29 @@ export function StockProvider({
         } else if (!legacyOwner && legacyValue) {
           local = normalizeSavedData(JSON.parse(legacyValue));
           isLegacySource = true;
+        }
+
+        if (!guestOwner || guestOwner === userId) {
+          const guestSnapshot = readLocalSnapshot(guestValue);
+          if (guestSnapshot) {
+            const guestDataJson = JSON.stringify(guestSnapshot.data);
+            const guestBaseline =
+              await AsyncStorage.getItem(guestBaselineKey);
+            const guestHasData =
+              guestSnapshot.data.items.length > 0 ||
+              guestSnapshot.data.shoppingList.length > 0 ||
+              guestSnapshot.data.recentLocations.length > 0 ||
+              guestSnapshot.data.recentStores.length > 0;
+            if (guestHasData && guestDataJson !== guestBaseline) {
+              local = mergeSavedData(local, guestSnapshot.data);
+              didMergeGuest = true;
+              pendingGuestMigrationRef.current = {
+                userId,
+                baselineKey: guestBaselineKey,
+                dataJson: guestDataJson,
+              };
+            }
+          }
         }
         didLoadLocal = true;
 
@@ -374,15 +493,20 @@ export function StockProvider({
           localUpdatedAtRef.current = localUpdatedAt;
           lastPersistedJsonRef.current = JSON.stringify(local);
           applySavedData(local);
-          await writeLocalSnapshot(
+          const localSaved = await writeLocalSnapshot(
             local,
             localUpdatedAt,
             localSnapshot?.cloudUpdatedAt ?? 0,
-          ).catch(() => {
+            true,
+          )
+            .then(() => true)
+            .catch(() => {
             setStorageError(
               'Your stock could not be saved on this device. Please try again.',
             );
+              return false;
           });
+          if (localSaved) await claimPendingGuestMigration();
           await AsyncStorage.setItem(LEGACY_OWNER_KEY, userId).catch(() => {});
           setCloudSyncStatus('error');
           setCloudSyncError(
@@ -401,40 +525,24 @@ export function StockProvider({
           : 0;
         let chosen = local;
         let shouldUpload = cloud === null;
+        let isDirty = shouldUpload;
 
         if (cloud) {
-          if (isLegacySource) {
+          if (isLegacySource || localSnapshot?.isDirty || didMergeGuest) {
             chosen = mergeSavedData(local, cloud);
             shouldUpload = true;
-          } else if (
-            localSnapshot &&
-            localSnapshot.localUpdatedAt > localSnapshot.cloudUpdatedAt
-          ) {
-            chosen =
-              localSnapshot.cloudUpdatedAt > 0 &&
-              remoteUpdatedAt > localSnapshot.cloudUpdatedAt
-                ? mergeSavedData(local, cloud)
-                : local;
-            shouldUpload = true;
-          } else if (
-            localSnapshot &&
-            localSnapshot.localUpdatedAt === 0 &&
-            localSnapshot.cloudUpdatedAt === 0 &&
-            hasSavedContent(local)
-          ) {
-            chosen = mergeSavedData(local, cloud);
-            shouldUpload = true;
+            isDirty = true;
           } else {
             chosen = cloud;
+            isDirty = false;
           }
         }
 
         const chosenJson = JSON.stringify(chosen);
-        const localUpdatedAt = shouldUpload
-          ? chosenJson !== JSON.stringify(local) || !localSnapshot
+        const localUpdatedAt =
+          chosenJson !== JSON.stringify(local) || !localSnapshot
             ? Date.now()
-            : localSnapshot.localUpdatedAt || Date.now()
-          : remoteUpdatedAt || Date.now();
+            : localSnapshot.localUpdatedAt || Date.now();
         localUpdatedAtRef.current = localUpdatedAt;
         cloudUpdatedAtRef.current = remoteUpdatedAt;
         lastPersistedJsonRef.current = chosenJson;
@@ -447,10 +555,13 @@ export function StockProvider({
               ? Date.parse(saved.updatedAt)
               : Date.now();
             lastCloudSentJsonRef.current = chosenJson;
+            await completePendingGuestMigration();
+            isDirty = false;
             setCloudReady(true);
             setCloudSyncStatus('synced');
             setCloudSyncError(null);
           } catch {
+            isDirty = true;
             setCloudReady(false);
             setCloudSyncStatus('error');
             setCloudSyncError(
@@ -464,15 +575,22 @@ export function StockProvider({
           setCloudSyncError(null);
         }
 
-        await writeLocalSnapshot(
+        const localSaved = await writeLocalSnapshot(
           chosen,
           localUpdatedAt,
           cloudUpdatedAtRef.current,
-        ).catch(() => {
+          isDirty,
+        )
+          .then(() => true)
+          .catch(() => {
           setStorageError(
             'Your stock could not be saved on this device. Please try again.',
           );
+            return false;
         });
+        if (didMergeGuest && localSaved) {
+          await claimPendingGuestMigration();
+        }
         await AsyncStorage.setItem(LEGACY_OWNER_KEY, userId).catch(() => {});
         if (isMounted) {
           setCanPersist(true);
@@ -486,16 +604,27 @@ export function StockProvider({
           localUpdatedAtRef.current = localUpdatedAt;
           lastPersistedJsonRef.current = JSON.stringify(local);
           applySavedData(local);
-          await writeLocalSnapshot(
+          const localSaved = await writeLocalSnapshot(
             local,
             localUpdatedAt,
             localSnapshot?.cloudUpdatedAt ?? 0,
-          ).catch(() => {});
-          await AsyncStorage.setItem(LEGACY_OWNER_KEY, userId).catch(() => {});
-          setCloudSyncStatus('error');
-          setCloudSyncError(
-            'Could not reconcile your cloud copy. Your existing stock was kept on this device.',
-          );
+            Boolean(userId),
+          )
+            .then(() => true)
+            .catch(() => false);
+          if (didMergeGuest && localSaved) {
+            await claimPendingGuestMigration();
+          }
+          if (userId) {
+            await AsyncStorage.setItem(LEGACY_OWNER_KEY, userId).catch(() => {});
+            setCloudSyncStatus('error');
+            setCloudSyncError(
+              'Could not reconcile your cloud copy. Your existing stock was kept on this device.',
+            );
+          } else {
+            setCloudSyncStatus('local');
+            setCloudSyncError(null);
+          }
           setCanPersist(true);
         } else {
           setStorageError(
@@ -512,8 +641,10 @@ export function StockProvider({
       isMounted = false;
     };
   }, [
-    accountStorageKey,
     applySavedData,
+    claimPendingGuestMigration,
+    completePendingGuestMigration,
+    storageKey,
     userId,
     writeLocalSnapshot,
   ]);
@@ -526,17 +657,22 @@ export function StockProvider({
     const localUpdatedAt = Date.now();
     localUpdatedAtRef.current = localUpdatedAt;
     lastPersistedJsonRef.current = dataJson;
-    writeLocalSnapshot(savedData, localUpdatedAt, cloudUpdatedAtRef.current)
+    writeLocalSnapshot(
+      savedData,
+      localUpdatedAt,
+      cloudUpdatedAtRef.current,
+      Boolean(userId),
+    )
       .then(() => setStorageError(null))
       .catch(() => {
         setStorageError(
           'Your changes could not be saved on this device. Please try again.',
         );
       });
-  }, [canPersist, isLoading, savedData, writeLocalSnapshot]);
+  }, [canPersist, isLoading, savedData, userId, writeLocalSnapshot]);
 
   useEffect(() => {
-    if (!canPersist || !cloudReady) return;
+    if (!userId || !canPersist || !cloudReady) return;
     const dataJson = JSON.stringify(savedData);
     if (dataJson === lastCloudSentJsonRef.current) return;
 
@@ -551,10 +687,10 @@ export function StockProvider({
     }, 650);
 
     return () => clearTimeout(timeout);
-  }, [canPersist, cloudReady, enqueueCloudWrite, savedData]);
+  }, [canPersist, cloudReady, enqueueCloudWrite, savedData, userId]);
 
   const syncNow = useCallback(async () => {
-    if (!canPersist) return;
+    if (!userId || !canPersist) return;
     setCloudSyncStatus('syncing');
     setCloudSyncError(null);
 
@@ -581,6 +717,7 @@ export function StockProvider({
       cloudUpdatedAtRef.current = saved.updatedAt
         ? Date.parse(saved.updatedAt)
         : Date.now();
+      await completePendingGuestMigration();
       setCloudReady(true);
       setCloudSyncStatus('synced');
       setCloudSyncError(null);
@@ -589,6 +726,7 @@ export function StockProvider({
         merged,
         localUpdatedAtRef.current || Date.now(),
         cloudUpdatedAtRef.current,
+        false,
       );
     } catch {
       setCloudSyncStatus('error');
@@ -600,7 +738,9 @@ export function StockProvider({
     applySavedData,
     canPersist,
     cloudReady,
+    completePendingGuestMigration,
     enqueueCloudWrite,
+    userId,
     writeLocalSnapshot,
   ]);
 
@@ -686,8 +826,21 @@ export function StockProvider({
         Array.isArray(data)
           ? data
           : record.items;
-      if (!Array.isArray(source) || source.length === 0) {
-        throw new Error('The JSON must contain a non-empty items list.');
+      const listSource = Array.isArray(record.shoppingList)
+        ? record.shoppingList
+        : [];
+      const hasSavedSuggestions =
+        (Array.isArray(record.recentLocations) &&
+          record.recentLocations.length > 0) ||
+        (Array.isArray(record.recentStores) &&
+          record.recentStores.length > 0);
+      if (
+        !Array.isArray(source) ||
+        (source.length === 0 &&
+          listSource.length === 0 &&
+          !hasSavedSuggestions)
+      ) {
+        throw new Error('The JSON does not contain any saved Home Stock data.');
       }
 
       const importedItems = source.map((item) =>
@@ -695,9 +848,7 @@ export function StockProvider({
       );
       const normalizedBackup = normalizeSavedData({
         items: importedItems,
-        shoppingList: Array.isArray(record.shoppingList)
-          ? record.shoppingList
-          : [],
+        shoppingList: listSource,
         recentLocations: record.recentLocations,
         recentStores: record.recentStores,
       });
@@ -713,15 +864,11 @@ export function StockProvider({
         newItems.push(item);
       }
 
-      const availableIds = new Set([
-        ...items.map((item) => item.id),
-        ...newItems.map((item) => item.id),
-      ]);
       const knownEntryIds = new Set(
         shoppingList.map((entry) => entry.entryId),
       );
       const newShoppingList = normalizedBackup.shoppingList.filter((entry) => {
-        if (!availableIds.has(entry.id) || knownEntryIds.has(entry.entryId)) {
+        if (knownEntryIds.has(entry.entryId)) {
           return false;
         }
         knownEntryIds.add(entry.entryId);
