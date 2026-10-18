@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '@clerk/expo';
 import {
   getHomeStock,
@@ -6,6 +5,11 @@ import {
   setAuthTokenGetter,
 } from '@workspace/api-client-react';
 import * as Haptics from 'expo-haptics';
+import {
+  getLocalItem,
+  removeLocalItem,
+  setLocalItem,
+} from './localStore';
 import React, {
   createContext,
   useCallback,
@@ -404,7 +408,7 @@ export function StockProvider({
       });
       const write = localWriteQueueRef.current
         .catch(() => undefined)
-        .then(() => AsyncStorage.setItem(storageKey, payload));
+        .then(() => setLocalItem(storageKey, payload));
       localWriteQueueRef.current = write;
       return write;
     },
@@ -414,16 +418,16 @@ export function StockProvider({
   const claimPendingGuestMigration = useCallback(async () => {
     const pending = pendingGuestMigrationRef.current;
     if (!userId || !pending || pending.userId !== userId) return;
-    await AsyncStorage.setItem(GUEST_OWNER_KEY, userId).catch(() => {});
+    await setLocalItem(GUEST_OWNER_KEY, userId).catch(() => {});
   }, [userId]);
 
   const completePendingGuestMigration = useCallback(async () => {
     const pending = pendingGuestMigrationRef.current;
     if (!userId || !pending || pending.userId !== userId) return;
     try {
-      await AsyncStorage.setItem(GUEST_OWNER_KEY, userId);
-      await AsyncStorage.setItem(pending.baselineKey, pending.dataJson);
-      await AsyncStorage.removeItem(GUEST_STORAGE_KEY);
+      await setLocalItem(GUEST_OWNER_KEY, userId);
+      await setLocalItem(pending.baselineKey, pending.dataJson);
+      await removeLocalItem(GUEST_STORAGE_KEY);
       pendingGuestMigrationRef.current = null;
     } catch {
       // The account copy is already safe. Keeping the pending marker means the
@@ -483,9 +487,9 @@ export function StockProvider({
       try {
         if (!userId) {
           const [guestValue, legacyOwner, legacyValue] = await Promise.all([
-            AsyncStorage.getItem(GUEST_STORAGE_KEY),
-            AsyncStorage.getItem(LEGACY_OWNER_KEY),
-            AsyncStorage.getItem(STORAGE_KEY),
+            getLocalItem(GUEST_STORAGE_KEY),
+            getLocalItem(LEGACY_OWNER_KEY),
+            getLocalItem(STORAGE_KEY),
           ]);
           localSnapshot = readLocalSnapshot(guestValue);
           if (localSnapshot) {
@@ -529,11 +533,11 @@ export function StockProvider({
           guestValue,
           guestOwner,
         ] = await Promise.all([
-          AsyncStorage.getItem(storageKey),
-          AsyncStorage.getItem(LEGACY_OWNER_KEY),
-          AsyncStorage.getItem(STORAGE_KEY),
-          AsyncStorage.getItem(GUEST_STORAGE_KEY),
-          AsyncStorage.getItem(GUEST_OWNER_KEY),
+          getLocalItem(storageKey),
+          getLocalItem(LEGACY_OWNER_KEY),
+          getLocalItem(STORAGE_KEY),
+          getLocalItem(GUEST_STORAGE_KEY),
+          getLocalItem(GUEST_OWNER_KEY),
         ]);
 
         localSnapshot = readLocalSnapshot(accountValue);
@@ -549,7 +553,7 @@ export function StockProvider({
           if (guestSnapshot) {
             const guestDataJson = JSON.stringify(guestSnapshot.data);
             const guestBaseline =
-              await AsyncStorage.getItem(guestBaselineKey);
+              await getLocalItem(guestBaselineKey);
             const guestHasData =
               guestSnapshot.data.items.length > 0 ||
               guestSnapshot.data.shoppingList.length > 0 ||
@@ -592,7 +596,7 @@ export function StockProvider({
               return false;
           });
           if (localSaved) await claimPendingGuestMigration();
-          await AsyncStorage.setItem(LEGACY_OWNER_KEY, userId).catch(() => {});
+          await setLocalItem(LEGACY_OWNER_KEY, userId).catch(() => {});
           setCloudSyncStatus('error');
           setCloudSyncError(
             'Could not reach cloud sync. Your stock remains on this device; try syncing again when you are online.',
@@ -688,7 +692,7 @@ export function StockProvider({
         if (didMergeGuest && localSaved) {
           await claimPendingGuestMigration();
         }
-        await AsyncStorage.setItem(LEGACY_OWNER_KEY, userId).catch(() => {});
+        await setLocalItem(LEGACY_OWNER_KEY, userId).catch(() => {});
         if (isMounted) {
           setCanPersist(true);
           setIsLoading(false);
@@ -713,7 +717,7 @@ export function StockProvider({
             await claimPendingGuestMigration();
           }
           if (userId) {
-            await AsyncStorage.setItem(LEGACY_OWNER_KEY, userId).catch(() => {});
+            await setLocalItem(LEGACY_OWNER_KEY, userId).catch(() => {});
             setCloudSyncStatus('error');
             setCloudSyncError(
               'Could not reconcile your cloud copy. Your existing stock was kept on this device.',
