@@ -31,7 +31,7 @@ export type BuyListItem = StockItem & {
   purchased: boolean;
 };
 
-type SavedData = {
+export type SavedData = {
   items: StockItem[];
   shoppingList: BuyListItem[];
   recentLocations: string[];

@@ -13,7 +13,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StockItemCard } from '@/components/StockItemCard';
 import { useColors } from '@/hooks/useColors';
+import { useBackupStatus } from '@/state/BackupStatus';
 import { useStock } from '@/state/StockContext';
+import { backupReminder } from '@/utils/backup';
 
 type SortBy = 'date' | 'name';
 
@@ -56,6 +58,11 @@ export default function StockHomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { items, shoppingList, isLoading, storageError } = useStock();
+  const { lastBackupAt, checkedAt } = useBackupStatus();
+  const reminder =
+    isLoading || checkedAt === null
+      ? null
+      : backupReminder(lastBackupAt, items.length > 0, checkedAt);
   const remainingCount = shoppingList.filter((item) => !item.purchased).length;
   const [sortBy, setSortBy] = useState<SortBy>('date');
   const [descending, setDescending] = useState(true);
@@ -200,6 +207,33 @@ export default function StockHomeScreen() {
               {storageError}
             </Text>
           </View>
+        ) : null}
+
+        {reminder ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityHint="Opens backup options"
+            onPress={() => router.push('/data-tools')}
+            style={({ pressed }) => [
+              styles.reminderCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+              pressed && styles.pressed,
+            ]}
+            testID="backup-reminder"
+          >
+            <View style={[styles.reminderIcon, { backgroundColor: colors.accent }]}>
+              <Feather name="archive" size={16} color={colors.primary} />
+            </View>
+            <View style={styles.reminderBody}>
+              <Text style={[styles.reminderTitle, { color: colors.foreground }]}>
+                {reminder}
+              </Text>
+              <Text style={[styles.reminderCopy, { color: colors.mutedForeground }]}>
+                Save a backup file so you can restore your stock on a new phone.
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+          </Pressable>
         ) : null}
 
         <View style={styles.statsRow}>
@@ -479,6 +513,11 @@ const styles = StyleSheet.create({
     gap: 9,
   },
   errorText: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 16 },
+  reminderCard: { flexDirection: 'row', alignItems: 'center', gap: 11, padding: 13, borderRadius: 18, borderWidth: 1 },
+  reminderIcon: { height: 34, width: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  reminderBody: { flex: 1, gap: 3 },
+  reminderTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 17 },
+  reminderCopy: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },
   statsRow: { flexDirection: 'row', gap: 11 },
   statCard: { flex: 1, borderRadius: 18, padding: 15, gap: 4 },
   filterPanel: { borderRadius: 18, padding: 14, gap: 13 },

@@ -13,6 +13,7 @@ import {
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useColors } from '@/hooks/useColors';
+import { BackupStatusProvider } from '@/state/BackupStatus';
 import { StockProvider } from '@/state/StockContext';
 
 // Screens opened straight from a link still get the tabs underneath them,
@@ -33,12 +34,14 @@ function RootLayoutNav() {
 
   return (
     <StockProvider>
-      <Stack screenOptions={screenOptions}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="item-form" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="stock-check" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="data-tools" options={{ presentation: 'modal' }} />
-      </Stack>
+      <BackupStatusProvider>
+        <Stack screenOptions={screenOptions}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="item-form" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="stock-check" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="data-tools" options={{ presentation: 'modal' }} />
+        </Stack>
+      </BackupStatusProvider>
     </StockProvider>
   );
 }

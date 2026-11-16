@@ -13,8 +13,42 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useColors } from '@/hooks/useColors';
+import { useBackupStatus } from '@/state/BackupStatus';
 import { useStock } from '@/state/StockContext';
+import {
+  createBackup,
+  describeLastBackup,
+  hasStockData,
+  pickBackupFile,
+  shareBackupFile,
+} from '@/utils/backup';
 import { router } from 'expo-router';
+
+type ImportResult = {
+  importedCount: number;
+  skippedCount: number;
+  shoppingListAddedCount: number;
+};
+
+function importSummary(result: ImportResult): string {
+  const summary = `${result.importedCount} ${result.importedCount === 1 ? 'item was' : 'items were'} added.`;
+  const skipped = result.skippedCount
+    ? ` ${result.skippedCount} duplicate ${result.skippedCount === 1 ? 'item was' : 'items were'} skipped.`
+    : '';
+  const listSummary = result.shoppingListAddedCount
+    ? ` ${result.shoppingListAddedCount} buy-list ${result.shoppingListAddedCount === 1 ? 'entry was' : 'entries were'} added.`
+    : '';
+  return `${summary}${listSummary}${skipped} Your existing data was kept.`;
+}
+
+function importErrorMessage(error: unknown): string {
+  if (error instanceof SyntaxError) {
+    return 'This text is not a complete backup. Paste all of it, from the first { to the last }.';
+  }
+  return error instanceof Error
+    ? error.message
+    : 'This backup could not be imported. Check that it came from a Home Stock export.';
+}
 
 export default function DataToolsScreen() {
   const colors = useColors();
@@ -27,39 +61,68 @@ export default function DataToolsScreen() {
     importBackup,
     isLoading,
   } = useStock();
+  const { lastBackupAt, checkedAt, markBackedUp } = useBackupStatus();
   const [jsonText, setJsonText] = useState('');
   const [error, setError] = useState('');
+  const [isBusy, setIsBusy] = useState(false);
+  const stockData = { items, shoppingList, recentLocations, recentStores };
+  const canExport = !isLoading && !isBusy && hasStockData(stockData);
 
-  async function exportItems() {
-    if (
-      items.length === 0 &&
-      shoppingList.length === 0 &&
-      recentLocations.length === 0 &&
-      recentStores.length === 0
-    ) {
-      Alert.alert('No data to export', 'Add something to your stock first.');
-      return;
-    }
-    const backup = {
-      format: 'home-stock-backup',
-      version: 3,
-      exportedAt: new Date().toISOString(),
-      items,
-      shoppingList,
-      recentLocations,
-      recentStores,
-    };
+  // Android doesn't report whether a share finished, so ask before recording it.
+  function confirmBackupSaved() {
+    Alert.alert(
+      'Did the backup save?',
+      "Android doesn't tell Home Stock whether sharing finished. Tap Yes once the backup is saved, so the backup reminder stays accurate.",
+      [
+        { text: 'Not yet', style: 'cancel' },
+        { text: "Yes, it's saved", onPress: markBackedUp },
+      ],
+    );
+  }
+
+  async function saveBackupFile() {
+    setIsBusy(true);
     try {
-      await Share.share({
-        title: 'Home Stock inventory JSON',
-        message: JSON.stringify(backup, null, 2),
+      await shareBackupFile(stockData);
+    } catch {
+      Alert.alert('Could not save the backup', 'Please try again.');
+      return;
+    } finally {
+      setIsBusy(false);
+    }
+    confirmBackupSaved();
+  }
+
+  async function shareBackupText() {
+    try {
+      const result = await Share.share({
+        title: 'Home Stock backup',
+        message: JSON.stringify(createBackup(stockData), null, 2),
       });
+      if (result.action === Share.dismissedAction) return;
     } catch {
       Alert.alert('Could not export', 'Please try sharing your inventory again.');
+      return;
+    }
+    confirmBackupSaved();
+  }
+
+  async function importBackupFile() {
+    setError('');
+    setIsBusy(true);
+    try {
+      const picked = await pickBackupFile();
+      if (!picked.canceled) {
+        Alert.alert('Import complete', importSummary(importBackup(picked.data)));
+      }
+    } catch (importError) {
+      setError(importErrorMessage(importError));
+    } finally {
+      setIsBusy(false);
     }
   }
 
-  function importJson() {
+  function importPastedText() {
     if (!jsonText.trim()) {
       setError('Paste your exported JSON above first.');
       return;
@@ -68,23 +131,9 @@ export default function DataToolsScreen() {
       const result = importBackup(JSON.parse(jsonText) as unknown);
       setJsonText('');
       setError('');
-      const summary = `${result.importedCount} ${result.importedCount === 1 ? 'item was' : 'items were'} added.`;
-      const skipped = result.skippedCount
-        ? ` ${result.skippedCount} duplicate ${result.skippedCount === 1 ? 'item was' : 'items were'} skipped.`
-        : '';
-      const listSummary = result.shoppingListAddedCount
-        ? ` ${result.shoppingListAddedCount} buy-list ${result.shoppingListAddedCount === 1 ? 'entry was' : 'entries were'} added.`
-        : '';
-      Alert.alert(
-        'Import complete',
-        `${summary}${listSummary}${skipped} Your existing data was kept.`,
-      );
+      Alert.alert('Import complete', importSummary(result));
     } catch (importError) {
-      setError(
-        importError instanceof Error
-          ? importError.message
-          : 'This JSON could not be imported. Check that it came from a Home Stock export.',
-      );
+      setError(importErrorMessage(importError));
     }
   }
 
@@ -119,8 +168,13 @@ export default function DataToolsScreen() {
             Keep a copy of your stock
           </Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            Your stock is saved on this phone. Export a backup now and then so you can restore it on a new phone.
+            Your stock is saved on this phone. Save a backup file now and then so you can restore it on a new phone.
           </Text>
+          {checkedAt !== null ? (
+            <Text style={[styles.lastBackup, { color: colors.primary }]} testID="last-backup">
+              {describeLastBackup(lastBackupAt, checkedAt)}
+            </Text>
+          ) : null}
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
@@ -128,39 +182,38 @@ export default function DataToolsScreen() {
             Export a full backup
           </Text>
           <Text style={[styles.cardCopy, { color: colors.mutedForeground }]}>
-            Share {items.length} {items.length === 1 ? 'item' : 'items'}, your buy list, and saved places as JSON.
+            Save {items.length} {items.length === 1 ? 'item' : 'items'}, your buy list, and saved places as a file you can keep in Google Drive, Files or a chat.
           </Text>
           <Pressable
             accessibilityRole="button"
-            disabled={
-              isLoading ||
-              (items.length === 0 &&
-                shoppingList.length === 0 &&
-                recentLocations.length === 0 &&
-                recentStores.length === 0)
-            }
-            onPress={() => void exportItems()}
+            disabled={!canExport}
+            onPress={() => void saveBackupFile()}
             style={({ pressed }) => [
               styles.primaryButton,
               {
                 backgroundColor: colors.primary,
-                opacity:
-                  isLoading ||
-                  (items.length === 0 &&
-                    shoppingList.length === 0 &&
-                    recentLocations.length === 0 &&
-                    recentStores.length === 0)
-                    ? 0.5
-                    : pressed
-                      ? 0.85
-                      : 1,
+                opacity: !canExport ? 0.5 : pressed ? 0.85 : 1,
               },
+            ]}
+            testID="export-file-button"
+          >
+            <Feather name="save" size={16} color={colors.primaryForeground} />
+            <Text style={[styles.primaryButtonText, { color: colors.primaryForeground }]}>
+              Save backup file
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            disabled={!canExport}
+            onPress={() => void shareBackupText()}
+            style={({ pressed }) => [
+              styles.textButton,
+              { opacity: !canExport ? 0.5 : pressed ? 0.65 : 1 },
             ]}
             testID="export-items-button"
           >
-            <Feather name="share-2" size={16} color={colors.primaryForeground} />
-            <Text style={[styles.primaryButtonText, { color: colors.primaryForeground }]}>
-              Export JSON
+            <Text style={[styles.textButtonText, { color: colors.primary }]}>
+              Share as text instead
             </Text>
           </Pressable>
         </View>
@@ -170,8 +223,26 @@ export default function DataToolsScreen() {
             Import a full backup
           </Text>
           <Text style={[styles.cardCopy, { color: colors.mutedForeground }]}>
-            Paste a Home Stock backup. Items, buy-list entries, and saved places are merged; existing data is kept.
+            Open a Home Stock backup file, or paste its text below. Items, buy-list entries, and saved places are merged; existing data is kept.
           </Text>
+          <Pressable
+            accessibilityRole="button"
+            disabled={isLoading || isBusy}
+            onPress={() => void importBackupFile()}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              {
+                backgroundColor: colors.primary,
+                opacity: isLoading || isBusy ? 0.5 : pressed ? 0.85 : 1,
+              },
+            ]}
+            testID="import-file-button"
+          >
+            <Feather name="folder" size={16} color={colors.primaryForeground} />
+            <Text style={[styles.primaryButtonText, { color: colors.primaryForeground }]}>
+              Open backup file
+            </Text>
+          </Pressable>
           <TextInput
             accessibilityLabel="Paste inventory JSON"
             autoCapitalize="none"
@@ -181,7 +252,7 @@ export default function DataToolsScreen() {
               setJsonText(text);
               if (error) setError('');
             }}
-            placeholder={'Paste JSON here, for example:\n{"items":[...]} '}
+            placeholder={'Or paste backup text here, for example:\n{"items":[...]} '}
             placeholderTextColor={colors.mutedForeground}
             style={[
               styles.jsonInput,
@@ -202,26 +273,26 @@ export default function DataToolsScreen() {
           ) : null}
           <Pressable
             accessibilityRole="button"
-            disabled={isLoading || !jsonText.trim()}
-            onPress={importJson}
+            disabled={isLoading || isBusy || !jsonText.trim()}
+            onPress={importPastedText}
             style={({ pressed }) => [
               styles.secondaryButton,
               {
                 backgroundColor: colors.secondary,
-                opacity: isLoading || !jsonText.trim() ? 0.5 : pressed ? 0.8 : 1,
+                opacity: isLoading || isBusy || !jsonText.trim() ? 0.5 : pressed ? 0.8 : 1,
               },
             ]}
             testID="import-json-button"
           >
             <Feather name="download" size={16} color={colors.primary} />
             <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>
-              Import and merge
+              Import pasted text
             </Text>
           </Pressable>
         </View>
 
         <Text style={[styles.privacyNote, { color: colors.mutedForeground }]}>
-          {"Home Stock doesn't send your stock anywhere. Export JSON for a portable backup."}
+          {"Home Stock doesn't send your stock anywhere. Keep your backup file somewhere safe, like Google Drive."}
         </Text>
       </KeyboardAwareScrollViewCompat>
     </View>
@@ -238,6 +309,7 @@ const styles = StyleSheet.create({
   icon: { height: 48, width: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
   heading: { fontFamily: 'Inter_700Bold', fontSize: 25, lineHeight: 31, letterSpacing: -0.6 },
   subtitle: { fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18 },
+  lastBackup: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
   card: { borderRadius: 19, padding: 16, gap: 11 },
   cardTitle: { fontFamily: 'Inter_700Bold', fontSize: 15 },
   cardCopy: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 17 },
@@ -247,5 +319,7 @@ const styles = StyleSheet.create({
   errorText: { fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 16 },
   secondaryButton: { minHeight: 47, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   secondaryButtonText: { fontFamily: 'Inter_700Bold', fontSize: 12 },
+  textButton: { minHeight: 32, alignItems: 'center', justifyContent: 'center' },
+  textButtonText: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
   privacyNote: { fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, textAlign: 'center', paddingHorizontal: 12 },
 });
