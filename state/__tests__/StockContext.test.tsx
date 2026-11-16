@@ -11,17 +11,26 @@ jest.mock('expo-haptics', () => ({
 
 // In-memory stand-in for the SQLite-backed store.
 const mockStorage = new Map<string, string>();
-const mockFailures = { writes: false };
+const mockFailures = { reads: false, writes: false, copyWrites: false };
 
 jest.mock('../localStore', () => ({
-  getLocalItem: jest.fn(async (key: string) => mockStorage.get(key) ?? null),
+  getLocalItem: jest.fn(async (key: string) => {
+    if (mockFailures.reads) throw new Error('storage busy');
+    return mockStorage.get(key) ?? null;
+  }),
   setLocalItem: jest.fn(async (key: string, value: string) => {
     if (mockFailures.writes) throw new Error('disk full');
+    if (mockFailures.copyWrites && key === 'home-stock:original-copies:v1') throw new Error('disk full');
     mockStorage.set(key, value);
   }),
 }));
 
 const STORAGE_KEY = 'home-stock:guest:v1';
+const SAVED_COPIES_KEY = 'home-stock:original-copies:v1';
+
+function savedCopyTexts(): string[] {
+  return JSON.parse(mockStorage.get(SAVED_COPIES_KEY) ?? '[]').map((copy: { text: string }) => copy.text);
+}
 
 const milk: StockItemDraft = {
   name: 'Whole Milk',
@@ -70,7 +79,9 @@ function entryId(itemId: string, store: string) {
 
 beforeEach(() => {
   mockStorage.clear();
+  mockFailures.reads = false;
   mockFailures.writes = false;
+  mockFailures.copyWrites = false;
   jest.clearAllMocks();
 });
 
@@ -527,5 +538,117 @@ describe('storage errors', () => {
     });
     await waitFor(() => expect(result.current.storageError).toBeNull());
     expect(savedSnapshot().items).toHaveLength(2);
+  });
+});
+
+describe('recovering saved stock', () => {
+  const rice = { id: 'rice', name: 'Rice', minimumQuantity: 1, restockQuantity: 1, unit: '', location: 'Pantry', storeTypes: ['Market'], createdAt: 5 };
+  const soapWithoutPlace = { id: 'soap', name: 'Soap', minimumQuantity: 1, restockQuantity: 1, unit: '', storeTypes: ['Market'], createdAt: 6 };
+
+  it('loads the readable items, keeps a copy of the original and says what was left out', async () => {
+    const original = JSON.stringify({ items: [rice, soapWithoutPlace], shoppingList: [], recentLocations: [], recentStores: [] });
+    mockStorage.set(STORAGE_KEY, original);
+
+    const { result } = await renderStock();
+
+    expect(result.current.items.map((item) => item.id)).toEqual(['rice']);
+    expect(result.current.loadNotice).toMatch(/1 saved item couldn't be read/);
+    expect(result.current.loadProblem).toBeNull();
+    expect(result.current.storageError).toBeNull();
+    expect(savedCopyTexts()).toEqual([original]);
+    expect(result.current.savedCopyCount).toBe(1);
+    expect(savedSnapshot().items.map((item: { id: string }) => item.id)).toEqual(['rice']);
+    await expect(result.current.getRecoveryData()).resolves.toContain(JSON.stringify(original));
+
+    await act(() => {
+      result.current.dismissLoadNotice();
+    });
+    expect(result.current.loadNotice).toBeNull();
+  });
+
+  it('changes nothing and offers Try again when the original copy cannot be kept', async () => {
+    const original = JSON.stringify({ items: [rice, soapWithoutPlace], shoppingList: [], recentLocations: [], recentStores: [] });
+    mockStorage.set(STORAGE_KEY, original);
+    mockFailures.copyWrites = true;
+
+    const { result } = await renderStock();
+
+    expect(result.current.loadProblem).toBe('read-failed');
+    expect(mockStorage.get(STORAGE_KEY)).toBe(original);
+
+    mockFailures.copyWrites = false;
+    await act(() => {
+      result.current.retryLoad();
+    });
+
+    await waitFor(() => expect(result.current.items.map((item) => item.id)).toEqual(['rice']));
+    expect(result.current.loadProblem).toBeNull();
+    expect(savedCopyTexts()).toEqual([original]);
+  });
+
+  it('keeps earlier copies instead of writing over them', async () => {
+    const first = JSON.stringify({ items: [rice, soapWithoutPlace], shoppingList: [], recentLocations: [], recentStores: [] });
+    mockStorage.set(STORAGE_KEY, first);
+    const firstRun = await renderStock();
+    await firstRun.unmount();
+
+    const second = JSON.stringify({ items: [rice, { ...soapWithoutPlace, name: 'Shampoo' }], shoppingList: [], recentLocations: [], recentStores: [] });
+    mockStorage.set(STORAGE_KEY, second);
+    const { result } = await renderStock();
+
+    expect(savedCopyTexts()).toEqual([first, second]);
+    expect(result.current.savedCopyCount).toBe(2);
+  });
+
+  it('deletes the kept copies when asked', async () => {
+    mockStorage.set(STORAGE_KEY, JSON.stringify({ items: [rice, soapWithoutPlace], shoppingList: [], recentLocations: [], recentStores: [] }));
+    const { result } = await renderStock();
+
+    await act(async () => {
+      await result.current.deleteSavedCopies();
+    });
+
+    expect(result.current.savedCopyCount).toBe(0);
+    expect(savedCopyTexts()).toEqual([]);
+    await expect(result.current.getRecoveryData()).resolves.toBeNull();
+  });
+
+  it('starts fresh after unreadable data, keeping a copy of it, and can import again', async () => {
+    mockStorage.set(STORAGE_KEY, '{not valid json');
+    const { result } = await renderStock();
+    expect(result.current.loadProblem).toBe('unreadable');
+    await expect(result.current.getRecoveryData()).resolves.toBe('{not valid json');
+
+    await act(async () => {
+      await result.current.startFresh();
+    });
+
+    expect(result.current.loadProblem).toBeNull();
+    expect(result.current.storageError).toBeNull();
+    expect(savedCopyTexts()).toEqual(['{not valid json']);
+    expect(result.current.savedCopyCount).toBe(1);
+    await waitFor(() => expect(savedSnapshot().items).toEqual([]));
+    await act(() => {
+      result.current.importBackup([{ ...bread }]);
+    });
+    await waitFor(() => expect(savedSnapshot().items).toHaveLength(1));
+  });
+
+  it('tries again after the saved stock could not be read', async () => {
+    mockStorage.set(STORAGE_KEY, JSON.stringify({ items: [rice], shoppingList: [], recentLocations: [], recentStores: [] }));
+    mockFailures.reads = true;
+    const { result } = await renderStock();
+    expect(result.current.loadProblem).toBe('read-failed');
+    expect(result.current.storageError).toMatch(/could not be read/);
+    expect(() => result.current.importBackup([{ ...bread }])).toThrow(/Try again/);
+
+    mockFailures.reads = false;
+    await act(() => {
+      result.current.retryLoad();
+    });
+
+    await waitFor(() => expect(result.current.items.map((item) => item.id)).toEqual(['rice']));
+    expect(result.current.loadProblem).toBeNull();
+    expect(result.current.storageError).toBeNull();
   });
 });

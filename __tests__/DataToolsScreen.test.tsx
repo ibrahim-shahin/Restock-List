@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
 import React from 'react';
 import { Alert, type AlertButton } from 'react-native';
 import DataToolsScreen from '@/app/data-tools';
-import { shareBackupFile } from '@/utils/backup';
+import { shareBackupFile, shareTextFile } from '@/utils/backup';
 
 const mockMarkBackedUp = jest.fn();
 const mockStock = {
@@ -55,6 +55,7 @@ function pressAlertButton(title: string, button: string) {
 beforeEach(() => {
   jest.clearAllMocks();
   alerts = [];
+  mockStock.current = { ...mockStock.current, loadProblem: null, loadNotice: null, savedCopyCount: 0 };
   jest.spyOn(Alert, 'alert').mockImplementation((title, _message, buttons) => {
     alerts.push({ title, buttons });
   });
@@ -92,5 +93,44 @@ describe('saving a backup', () => {
 
     await waitFor(() => expect(alerts.map((alert) => alert.title)).toEqual(['Could not save the backup']));
     expect(mockMarkBackedUp).not.toHaveBeenCalled();
+  });
+});
+
+describe('recovering saved stock', () => {
+  it('starts fresh only after you confirm', async () => {
+    mockStock.current = { ...mockStock.current, loadProblem: 'unreadable' };
+    await render(<DataToolsScreen />);
+
+    await fireEvent.press(screen.getByTestId('start-fresh-button'));
+    expect(mockStock.current.startFresh).not.toHaveBeenCalled();
+    pressAlertButton('Start fresh?', 'Start fresh');
+
+    expect(mockStock.current.startFresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers only Try again when the saved stock could not be read', async () => {
+    mockStock.current = { ...mockStock.current, loadProblem: 'read-failed' };
+    await render(<DataToolsScreen />);
+
+    expect(screen.queryByTestId('start-fresh-button')).toBeNull();
+    await fireEvent.press(screen.getByTestId('retry-load-button'));
+
+    expect(mockStock.current.retryLoad).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the saved copies reachable until you delete them', async () => {
+    mockStock.current = { ...mockStock.current, savedCopyCount: 2 };
+    await render(<DataToolsScreen />);
+    expect(screen.getByText('Damaged saved data is kept on this phone')).toBeTruthy();
+
+    await fireEvent.press(screen.getByTestId('save-original-button'));
+    await waitFor(() =>
+      expect(shareTextFile).toHaveBeenCalledWith('home-stock-saved-copies.json', '{}', expect.any(String)),
+    );
+
+    await fireEvent.press(screen.getByTestId('delete-copies-button'));
+    expect(mockStock.current.deleteSavedCopies).not.toHaveBeenCalled();
+    pressAlertButton('Delete the saved copies?', 'Delete');
+    expect(mockStock.current.deleteSavedCopies).toHaveBeenCalledTimes(1);
   });
 });

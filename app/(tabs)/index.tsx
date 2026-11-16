@@ -57,7 +57,7 @@ function FilterChip({
 export default function StockHomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { items, shoppingList, isLoading, storageError } = useStock();
+  const { items, shoppingList, isLoading, storageError, loadProblem, loadNotice } = useStock();
   const { lastBackupAt, checkedAt } = useBackupStatus();
   const reminder =
     isLoading || checkedAt === null
@@ -197,7 +197,13 @@ export default function StockHomeScreen() {
         </Pressable>
 
         {storageError ? (
-          <View style={[styles.errorBanner, { backgroundColor: colors.destructive }]}>
+          <Pressable
+            accessibilityRole={loadProblem ? 'button' : undefined}
+            disabled={!loadProblem}
+            onPress={() => router.push('/data-tools')}
+            style={[styles.errorBanner, { backgroundColor: colors.destructive }]}
+            testID="storage-error"
+          >
             <Feather
               name="alert-circle"
               size={16}
@@ -206,7 +212,37 @@ export default function StockHomeScreen() {
             <Text style={[styles.errorText, { color: colors.destructiveForeground }]}>
               {storageError}
             </Text>
-          </View>
+            {loadProblem ? (
+              <Feather name="chevron-right" size={16} color={colors.destructiveForeground} />
+            ) : null}
+          </Pressable>
+        ) : null}
+
+        {loadNotice ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityHint="Opens backup options"
+            onPress={() => router.push('/data-tools')}
+            style={({ pressed }) => [
+              styles.reminderCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+              pressed && styles.pressed,
+            ]}
+            testID="load-notice"
+          >
+            <View style={[styles.reminderIcon, { backgroundColor: colors.accent }]}>
+              <Feather name="info" size={16} color={colors.primary} />
+            </View>
+            <View style={styles.reminderBody}>
+              <Text style={[styles.reminderTitle, { color: colors.foreground }]}>
+                Some saved items were left out
+              </Text>
+              <Text style={[styles.reminderCopy, { color: colors.mutedForeground }]}>
+                {loadNotice}
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+          </Pressable>
         ) : null}
 
         {reminder ? (

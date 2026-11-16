@@ -46,6 +46,18 @@ type StockContextValue = SavedData & {
   createBuyList: (itemIds: string[], storeType: string) => void;
   togglePurchased: (entryId: string) => void;
   clearPurchased: () => void;
+  // Set while the saved stock can't be loaded; saving stays off meanwhile.
+  loadProblem: LoadProblem | null;
+  // Set when some saved items couldn't be read and were left out.
+  loadNotice: string | null;
+  dismissLoadNotice: () => void;
+  retryLoad: () => void;
+  startFresh: () => Promise<void>;
+  // How many copies of damaged saved data are kept on the device.
+  savedCopyCount: number;
+  // The unreadable saved text while it can't be opened, otherwise the kept copies.
+  getRecoveryData: () => Promise<string | null>;
+  deleteSavedCopies: () => Promise<void>;
   importBackup: (data: unknown) => {
     importedCount: number;
     skippedCount: number;
@@ -55,8 +67,53 @@ type StockContextValue = SavedData & {
 
 // Where the stock is saved. The name dates from an earlier version of the app.
 const STORAGE_KEY = 'home-stock:guest:v1';
-const LOAD_ERROR =
-  "Your saved stock could not be opened, so changes won't be saved. Close and reopen the app to try again.";
+// Copies of saved stock that couldn't be fully read, kept before it is replaced.
+// New copies are added, never written over; only the newest few are kept.
+const SAVED_COPIES_KEY = 'home-stock:original-copies:v1';
+const MAX_SAVED_COPIES = 5;
+
+type SavedCopy = { savedAt: number; text: string };
+
+async function readSavedCopies(): Promise<SavedCopy[]> {
+  const saved = await getLocalItem(SAVED_COPIES_KEY);
+  if (!saved) return [];
+  try {
+    const value: unknown = JSON.parse(saved);
+    return Array.isArray(value)
+      ? value.filter(
+          (copy): copy is SavedCopy =>
+            typeof copy?.text === 'string' && typeof copy?.savedAt === 'number',
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Adds a copy unless the same text is already kept; returns how many are kept. */
+async function keepSavedCopy(text: string): Promise<number> {
+  const copies = await readSavedCopies();
+  if (copies.some((copy) => copy.text === text)) return copies.length;
+  const next = [...copies, { savedAt: Date.now(), text }].slice(-MAX_SAVED_COPIES);
+  await setLocalItem(SAVED_COPIES_KEY, JSON.stringify(next));
+  return next.length;
+}
+
+export type LoadProblem = 'read-failed' | 'unreadable';
+
+const LOAD_ERRORS: Record<LoadProblem, string> = {
+  'read-failed':
+    "Your saved stock could not be read, so changes won't be saved. Open Backup to try again.",
+  unreadable:
+    "Your saved stock could not be opened, so changes won't be saved. Open Backup to recover it.",
+};
+
+const IMPORT_BLOCKED: Record<LoadProblem, string> = {
+  'read-failed':
+    'Your saved stock could not be read. Tap Try again first, then import your backup.',
+  unreadable:
+    'Your saved stock could not be opened. Choose Start fresh first, then import your backup.',
+};
 const StockContext = createContext<StockContextValue | null>(null);
 const MAX_RECENT_PLACES = 10;
 const EMPTY_SAVED_DATA: SavedData = {
@@ -174,7 +231,13 @@ function normalizeStockItem(
   };
 }
 
-function normalizeSavedData(value: unknown, imported = false): SavedData {
+// Without onInvalid, any invalid record throws. With it, invalid records are
+// reported and left out, so the rest of the saved stock still loads.
+function normalizeSavedData(
+  value: unknown,
+  imported = false,
+  onInvalid?: () => void,
+): SavedData {
   const record = asRecord(value);
   if (!Array.isArray(record.items) || !Array.isArray(record.shoppingList)) {
     throw new Error('Your saved stock has an unexpected format.');
@@ -182,17 +245,35 @@ function normalizeSavedData(value: unknown, imported = false): SavedData {
 
   const usedItemIds = new Set<string>();
   const itemIdBySourceId = new Map<string, string>();
-  const items = record.items.map((value, index) => {
-    const itemRecord = asRecord(value);
-    const name = typeof itemRecord.name === 'string' ? itemRecord.name.trim() : '';
-    const id = assignUniqueItemId(name, usedItemIds);
-    if (typeof itemRecord.id === 'string' && !itemIdBySourceId.has(itemRecord.id)) {
-      itemIdBySourceId.set(itemRecord.id, id);
+  const skipInvalid = (error: unknown) => {
+    if (!onInvalid) throw error;
+    onInvalid();
+  };
+  const items: StockItem[] = [];
+  record.items.forEach((value, index) => {
+    let item: StockItem;
+    try {
+      item = normalizeStockItem(value, imported, index);
+    } catch (error) {
+      skipInvalid(error);
+      return;
     }
-    return normalizeStockItem(value, imported, index, id);
+    const id = assignUniqueItemId(item.name, usedItemIds);
+    const sourceId = asRecord(value).id;
+    if (typeof sourceId === 'string' && !itemIdBySourceId.has(sourceId)) {
+      itemIdBySourceId.set(sourceId, id);
+    }
+    items.push({ ...item, id });
   });
   const shoppingListByEntryId = new Map<string, BuyListItem>();
   record.shoppingList.forEach((value) => {
+    try {
+      addBuyListEntry(value);
+    } catch (error) {
+      skipInvalid(error);
+    }
+  });
+  function addBuyListEntry(value: unknown) {
     const itemRecord = asRecord(value);
     const sourceId =
       typeof itemRecord.id === 'string' ? itemRecord.id : '';
@@ -218,7 +299,7 @@ function normalizeSavedData(value: unknown, imported = false): SavedData {
       shoppingStoreType,
       purchased: itemRecord.purchased === true,
     });
-  });
+  }
   const shoppingList = [...shoppingListByEntryId.values()];
 
   const recentLocations = uniquePlaces(record.recentLocations);
@@ -245,7 +326,12 @@ export function StockProvider({ children }: { children: ReactNode }) {
   const [recentStores, setRecentStores] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [storageError, setStorageError] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadProblem, setLoadProblem] = useState<LoadProblem | null>(null);
+  const [loadNotice, setLoadNotice] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [savedCopyCount, setSavedCopyCount] = useState(0);
+  // The saved text when it couldn't be read at all, kept until it is set aside.
+  const unreadableTextRef = useRef<string | null>(null);
   const [canPersist, setCanPersist] = useState(false);
   const currentDataRef = useRef(EMPTY_SAVED_DATA);
   const lastPersistedJsonRef = useRef('');
@@ -278,21 +364,61 @@ export function StockProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
+    // Saving stays off for both problems, so the saved copy is never overwritten.
+    function stopWith(problem: LoadProblem) {
+      if (!isMounted) return;
+      setLoadProblem(problem);
+      setIsLoading(false);
+    }
+
     async function load() {
-      let local = EMPTY_SAVED_DATA;
+      readSavedCopies()
+        .then((copies) => {
+          if (isMounted) setSavedCopyCount(copies.length);
+        })
+        .catch(() => undefined);
+
+      let saved: string | null;
       try {
-        const saved = await getLocalItem(STORAGE_KEY);
-        if (saved) local = normalizeSavedData(JSON.parse(saved));
+        saved = await getLocalItem(STORAGE_KEY);
       } catch {
-        // Saving stays off, so the unreadable copy is not overwritten.
-        if (isMounted) {
-          setLoadError(LOAD_ERROR);
-          setIsLoading(false);
-        }
+        stopWith('read-failed');
         return;
+      }
+
+      let local = EMPTY_SAVED_DATA;
+      let skipped = 0;
+      if (saved) {
+        try {
+          local = normalizeSavedData(JSON.parse(saved), false, () => {
+            skipped += 1;
+          });
+        } catch {
+          unreadableTextRef.current = saved;
+          stopWith('unreadable');
+          return;
+        }
+      }
+
+      if (saved && skipped > 0) {
+        // Keep the original before the readable part replaces it. If that
+        // fails, change nothing and offer Try again: the stock is still there.
+        let copyCount: number;
+        try {
+          copyCount = await keepSavedCopy(saved);
+        } catch {
+          stopWith('read-failed');
+          return;
+        }
+        if (isMounted) setSavedCopyCount(copyCount);
       }
       if (!isMounted) return;
 
+      if (skipped > 0) {
+        setLoadNotice(
+          `${skipped} saved ${skipped === 1 ? "item couldn't be read and was" : "items couldn't be read and were"} left out. A copy of the original data was kept on this phone.`,
+        );
+      }
       lastPersistedJsonRef.current = JSON.stringify(local);
       applySavedData(local);
       await writeSnapshot(local).catch(() => {
@@ -311,7 +437,36 @@ export function StockProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
     };
-  }, [applySavedData, writeSnapshot]);
+  }, [applySavedData, loadAttempt, writeSnapshot]);
+
+  const retryLoad = useCallback(() => {
+    setLoadProblem(null);
+    setIsLoading(true);
+    setLoadAttempt((attempt) => attempt + 1);
+  }, []);
+
+  const startFresh = useCallback(async () => {
+    // Set the unreadable text aside first; if that fails, nothing changes.
+    const unreadable = unreadableTextRef.current;
+    if (unreadable !== null) setSavedCopyCount(await keepSavedCopy(unreadable));
+    unreadableTextRef.current = null;
+    setLoadProblem(null);
+    // Saving turns on, so the persist effect replaces the unreadable copy.
+    setCanPersist(true);
+  }, []);
+
+  const getRecoveryData = useCallback(async () => {
+    if (unreadableTextRef.current !== null) return unreadableTextRef.current;
+    const copies = await readSavedCopies();
+    return copies.length > 0 ? JSON.stringify(copies, null, 2) : null;
+  }, []);
+
+  const deleteSavedCopies = useCallback(async () => {
+    await setLocalItem(SAVED_COPIES_KEY, '[]');
+    setSavedCopyCount(0);
+  }, []);
+
+  const dismissLoadNotice = useCallback(() => setLoadNotice(null), []);
 
   useEffect(() => {
     if (isLoading || !canPersist) return;
@@ -471,7 +626,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
 
   const importBackup = useCallback(
     (data: unknown) => {
-      if (loadError) throw new Error(LOAD_ERROR);
+      if (loadProblem) throw new Error(IMPORT_BLOCKED[loadProblem]);
       const record = Array.isArray(data) ? {} : asRecord(data);
       const source =
         Array.isArray(data)
@@ -560,15 +715,23 @@ export function StockProvider({ children }: { children: ReactNode }) {
         shoppingListAddedCount: newShoppingList.length,
       };
     },
-    [items, loadError, shoppingList],
+    [items, loadProblem, shoppingList],
   );
 
   const value = useMemo(
     () => ({
       ...savedData,
       isLoading,
-      // A load failure stays visible until the app restarts.
-      storageError: loadError ?? storageError,
+      // A load problem stays visible until it is fixed.
+      storageError: loadProblem ? LOAD_ERRORS[loadProblem] : storageError,
+      loadProblem,
+      loadNotice,
+      dismissLoadNotice,
+      retryLoad,
+      startFresh,
+      savedCopyCount,
+      getRecoveryData,
+      deleteSavedCopies,
       saveItem,
       deleteItem,
       createBuyList,
@@ -579,7 +742,14 @@ export function StockProvider({ children }: { children: ReactNode }) {
     [
       savedData,
       isLoading,
-      loadError,
+      loadProblem,
+      loadNotice,
+      dismissLoadNotice,
+      retryLoad,
+      startFresh,
+      savedCopyCount,
+      getRecoveryData,
+      deleteSavedCopies,
       storageError,
       saveItem,
       deleteItem,

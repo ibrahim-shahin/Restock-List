@@ -21,6 +21,7 @@ import {
   hasStockData,
   pickBackupFile,
   shareBackupFile,
+  shareTextFile,
 } from '@/utils/backup';
 import { router } from 'expo-router';
 
@@ -60,6 +61,14 @@ export default function DataToolsScreen() {
     recentStores,
     importBackup,
     isLoading,
+    loadProblem,
+    loadNotice,
+    dismissLoadNotice,
+    retryLoad,
+    startFresh,
+    savedCopyCount,
+    getRecoveryData,
+    deleteSavedCopies,
   } = useStock();
   const { lastBackupAt, checkedAt, markBackedUp } = useBackupStatus();
   const [jsonText, setJsonText] = useState('');
@@ -122,6 +131,66 @@ export default function DataToolsScreen() {
     }
   }
 
+  async function saveOriginalCopy() {
+    setIsBusy(true);
+    try {
+      const data = await getRecoveryData();
+      if (data === null) {
+        Alert.alert('Nothing to save', 'No copy of the original data was found.');
+        return;
+      }
+      await shareTextFile(
+        loadProblem === 'unreadable'
+          ? 'home-stock-unreadable-data.json'
+          : 'home-stock-saved-copies.json',
+        data,
+        'Save a copy of your original Home Stock data',
+      );
+    } catch {
+      Alert.alert('Could not save the copy', 'Please try again.');
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  function confirmStartFresh() {
+    Alert.alert(
+      'Start fresh?',
+      'Your stock list starts empty. A copy of the unreadable data stays on this phone, and you can open a backup file next.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Start fresh',
+          style: 'destructive',
+          onPress: () => {
+            startFresh().catch(() => {
+              Alert.alert('Could not start fresh', 'Please try again.');
+            });
+          },
+        },
+      ],
+    );
+  }
+
+  function confirmDeleteCopies() {
+    Alert.alert(
+      'Delete the saved copies?',
+      'They hold saved stock that could not be read. Save a copy first if you might want it later.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteSavedCopies().catch(() => {
+              Alert.alert('Could not delete the copies', 'Please try again.');
+            });
+          },
+        },
+      ],
+    );
+  }
+
   function importPastedText() {
     if (!jsonText.trim()) {
       setError('Paste your exported JSON above first.');
@@ -176,6 +245,103 @@ export default function DataToolsScreen() {
             </Text>
           ) : null}
         </View>
+
+        {loadProblem || loadNotice || savedCopyCount > 0 ? (
+          <View
+            style={[styles.card, styles.recoveryCard, { backgroundColor: colors.card, borderColor: colors.destructive }]}
+            testID="recovery-card"
+          >
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+              {loadProblem === 'read-failed'
+                ? "Your saved stock couldn't be read"
+                : loadProblem === 'unreadable'
+                  ? "Your saved stock couldn't be opened"
+                  : loadNotice
+                    ? 'Some saved items were left out'
+                    : 'Damaged saved data is kept on this phone'}
+            </Text>
+            <Text style={[styles.cardCopy, { color: colors.mutedForeground }]}>
+              {loadProblem === 'read-failed'
+                ? 'This is usually temporary. Try again, or close and reopen the app.'
+                : loadProblem === 'unreadable'
+                  ? 'Save a copy of it to keep it safe, then start fresh and open your latest backup file.'
+                  : (loadNotice ??
+                    `${savedCopyCount} ${savedCopyCount === 1 ? 'copy' : 'copies'} of saved stock that could not be read. Save a copy to keep it, or delete it.`)}
+            </Text>
+            {loadProblem === 'read-failed' ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={retryLoad}
+                style={({ pressed }) => [
+                  styles.primaryButton,
+                  { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 },
+                ]}
+                testID="retry-load-button"
+              >
+                <Feather name="refresh-cw" size={16} color={colors.primaryForeground} />
+                <Text style={[styles.primaryButtonText, { color: colors.primaryForeground }]}>
+                  Try again
+                </Text>
+              </Pressable>
+            ) : (
+              <>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isBusy}
+                  onPress={() => void saveOriginalCopy()}
+                  style={({ pressed }) => [
+                    styles.secondaryButton,
+                    { backgroundColor: colors.secondary, opacity: isBusy ? 0.5 : pressed ? 0.8 : 1 },
+                  ]}
+                  testID="save-original-button"
+                >
+                  <Feather name="save" size={16} color={colors.primary} />
+                  <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>
+                    Save a copy
+                  </Text>
+                </Pressable>
+                {loadProblem === 'unreadable' ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={confirmStartFresh}
+                    style={({ pressed }) => [
+                      styles.primaryButton,
+                      { backgroundColor: colors.destructive, opacity: pressed ? 0.85 : 1 },
+                    ]}
+                    testID="start-fresh-button"
+                  >
+                    <Feather name="rotate-ccw" size={16} color={colors.destructiveForeground} />
+                    <Text style={[styles.primaryButtonText, { color: colors.destructiveForeground }]}>
+                      Start fresh
+                    </Text>
+                  </Pressable>
+                ) : loadNotice ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={dismissLoadNotice}
+                    style={({ pressed }) => [styles.textButton, { opacity: pressed ? 0.65 : 1 }]}
+                    testID="dismiss-notice-button"
+                  >
+                    <Text style={[styles.textButtonText, { color: colors.mutedForeground }]}>
+                      Dismiss
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={confirmDeleteCopies}
+                    style={({ pressed }) => [styles.textButton, { opacity: pressed ? 0.65 : 1 }]}
+                    testID="delete-copies-button"
+                  >
+                    <Text style={[styles.textButtonText, { color: colors.destructive }]}>
+                      Delete the copies
+                    </Text>
+                  </Pressable>
+                )}
+              </>
+            )}
+          </View>
+        ) : null}
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>
@@ -311,6 +477,7 @@ const styles = StyleSheet.create({
   subtitle: { fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18 },
   lastBackup: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
   card: { borderRadius: 19, padding: 16, gap: 11 },
+  recoveryCard: { borderWidth: 1 },
   cardTitle: { fontFamily: 'Inter_700Bold', fontSize: 15 },
   cardCopy: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 17 },
   primaryButton: { minHeight: 47, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 2 },

@@ -36,16 +36,24 @@ export function backupFileName(now = new Date()): string {
   return `home-stock-backup-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.json`;
 }
 
-/** Saves the backup as a file and opens the share sheet, so it can go to Drive, Files or a chat. */
-export async function shareBackupFile(data: SavedData, now = new Date()): Promise<void> {
-  const file = new File(Paths.cache, backupFileName(now));
+/** Writes text to a file and opens the share sheet, so it can go to Drive, Files or a chat. */
+export async function shareTextFile(name: string, text: string, dialogTitle: string): Promise<void> {
+  const file = new File(Paths.cache, name);
   file.create({ overwrite: true });
-  file.write(JSON.stringify(createBackup(data, now), null, 2));
+  file.write(text);
   await Sharing.shareAsync(file.uri, {
-    dialogTitle: 'Save your Home Stock backup',
+    dialogTitle,
     mimeType: 'application/json',
     UTI: 'public.json',
   });
+}
+
+export function shareBackupFile(data: SavedData, now = new Date()): Promise<void> {
+  return shareTextFile(
+    backupFileName(now),
+    JSON.stringify(createBackup(data, now), null, 2),
+    'Save your Home Stock backup',
+  );
 }
 
 /** Asks for a backup file and returns its parsed contents. */
