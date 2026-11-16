@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -52,9 +53,10 @@ type StockContextValue = SavedData & {
   };
 };
 
-// The key dates from when guest stock was stored apart from account stock.
-// It is kept so stock already saved under it keeps loading.
+// Where the stock is saved. The name dates from an earlier version of the app.
 const STORAGE_KEY = 'home-stock:guest:v1';
+const LOAD_ERROR =
+  "Your saved stock could not be opened, so changes won't be saved. Close and reopen the app to try again.";
 const StockContext = createContext<StockContextValue | null>(null);
 const MAX_RECENT_PLACES = 10;
 const EMPTY_SAVED_DATA: SavedData = {
@@ -87,7 +89,8 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function uniquePlaces(values: unknown): string[] {
+// Trimmed, non-empty strings with duplicates removed, ignoring case.
+function uniqueNames(values: unknown): string[] {
   if (!Array.isArray(values)) return [];
   const seen = new Set<string>();
   return values
@@ -98,8 +101,19 @@ function uniquePlaces(values: unknown): string[] {
       if (!value || seen.has(key)) return false;
       seen.add(key);
       return true;
-    })
-    .slice(0, MAX_RECENT_PLACES);
+    });
+}
+
+function uniquePlaces(values: unknown): string[] {
+  return uniqueNames(values).slice(0, MAX_RECENT_PLACES);
+}
+
+// The trimmed value, spelled the way `known` already spells it when one of
+// them matches without regard to case.
+function matchSpelling(value: string, known: string[]): string {
+  const trimmed = value.trim();
+  const key = trimmed.toLocaleLowerCase();
+  return known.find((candidate) => candidate.toLocaleLowerCase() === key) ?? trimmed;
 }
 
 function rememberPlace(place: string, recent: string[]): string[] {
@@ -114,7 +128,7 @@ function readStoreTypes(record: Record<string, unknown>): string[] {
     : typeof record.storeType === 'string'
       ? [record.storeType]
       : [];
-  return uniquePlaces(values);
+  return uniqueNames(values);
 }
 
 function normalizeStockItem(
@@ -127,15 +141,16 @@ function normalizeStockItem(
   const name = typeof record.name === 'string' ? record.name.trim() : '';
   const location = typeof record.location === 'string' ? record.location.trim() : '';
   const storeTypes = readStoreTypes(record);
-  const minimumQuantity = Number(record.minimumQuantity);
-  const restockQuantity = Number(record.restockQuantity);
+  const { minimumQuantity, restockQuantity } = record;
 
   if (
     !name ||
     !location ||
     storeTypes.length === 0 ||
+    typeof minimumQuantity !== 'number' ||
     !Number.isInteger(minimumQuantity) ||
     minimumQuantity < 0 ||
+    typeof restockQuantity !== 'number' ||
     !Number.isInteger(restockQuantity) ||
     restockQuantity < 1
   ) {
@@ -208,17 +223,18 @@ function normalizeSavedData(value: unknown, imported = false): SavedData {
 
   const recentLocations = uniquePlaces(record.recentLocations);
   const recentStores = uniquePlaces(record.recentStores);
+  const newestFirst = [...items].sort((a, b) => b.createdAt - a.createdAt);
   return {
     items,
     shoppingList,
     recentLocations:
       recentLocations.length > 0
         ? recentLocations
-        : [...items].sort((a, b) => b.createdAt - a.createdAt).map((item) => item.location).filter((place, index, all) => all.indexOf(place) === index).slice(0, MAX_RECENT_PLACES),
+        : uniquePlaces(newestFirst.map((item) => item.location)),
     recentStores:
       recentStores.length > 0
         ? recentStores
-        : [...items].sort((a, b) => b.createdAt - a.createdAt).flatMap((item) => item.storeTypes).filter((place, index, all) => all.findIndex((candidate) => candidate.toLocaleLowerCase() === place.toLocaleLowerCase()) === index).slice(0, MAX_RECENT_PLACES),
+        : uniquePlaces(newestFirst.flatMap((item) => item.storeTypes)),
   };
 }
 
@@ -229,6 +245,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
   const [recentStores, setRecentStores] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [canPersist, setCanPersist] = useState(false);
   const currentDataRef = useRef(EMPTY_SAVED_DATA);
   const lastPersistedJsonRef = useRef('');
@@ -238,7 +255,9 @@ export function StockProvider({ children }: { children: ReactNode }) {
     () => ({ items, shoppingList, recentLocations, recentStores }),
     [items, shoppingList, recentLocations, recentStores],
   );
-  currentDataRef.current = savedData;
+  useLayoutEffect(() => {
+    currentDataRef.current = savedData;
+  }, [savedData]);
 
   const applySavedData = useCallback((data: SavedData) => {
     setItems(data.items);
@@ -267,9 +286,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
       } catch {
         // Saving stays off, so the unreadable copy is not overwritten.
         if (isMounted) {
-          setStorageError(
-            'Your saved stock could not be opened. Your current changes may not be saved.',
-          );
+          setLoadError(LOAD_ERROR);
           setIsLoading(false);
         }
         return;
@@ -305,6 +322,10 @@ export function StockProvider({ children }: { children: ReactNode }) {
     writeSnapshot(savedData)
       .then(() => setStorageError(null))
       .catch(() => {
+        // Forget the failed snapshot so the next change retries the save.
+        if (lastPersistedJsonRef.current === dataJson) {
+          lastPersistedJsonRef.current = '';
+        }
         setStorageError(
           'Your changes could not be saved on this device. Please try again.',
         );
@@ -337,11 +358,25 @@ export function StockProvider({ children }: { children: ReactNode }) {
           ),
         );
 
-    setStorageError(null);
+    // Reuse the spelling other items already use, so "fridge" and "Fridge"
+    // count as the same place in stock checks and buy lists.
+    const otherItems = currentDataRef.current.items.filter(
+      (item) => item.id !== existingItem?.id,
+    );
+    const location = matchSpelling(
+      draft.location,
+      otherItems.map((item) => item.location),
+    );
+    const storeTypes = uniqueNames(
+      draft.storeTypes.map((store) =>
+        matchSpelling(store, otherItems.flatMap((item) => item.storeTypes)),
+      ),
+    );
     const savedItem: StockItem = {
       ...draft,
       name,
-      storeTypes: uniquePlaces(draft.storeTypes),
+      location,
+      storeTypes,
       id: itemId,
       createdAt: existingItem?.createdAt ?? Date.now(),
     };
@@ -356,23 +391,30 @@ export function StockProvider({ children }: { children: ReactNode }) {
       setShoppingList((current) => {
         const entries = new Map<string, BuyListItem>();
         for (const entry of current) {
-          const updatedEntry =
-            entry.id === existingItem.id
-              ? {
-                  ...savedItem,
-                  entryId: JSON.stringify([itemId, entry.shoppingStoreType]),
-                  shoppingStoreType: entry.shoppingStoreType,
-                  purchased: entry.purchased,
-                }
-              : entry;
-          entries.set(updatedEntry.entryId, updatedEntry);
+          if (entry.id !== existingItem.id) {
+            entries.set(entry.entryId, entry);
+            continue;
+          }
+          // Keep the entry only while the item is still sold at that store.
+          const store = storeTypes.find(
+            (candidate) =>
+              candidate.toLocaleLowerCase() ===
+              entry.shoppingStoreType.toLocaleLowerCase(),
+          );
+          if (!store) continue;
+          entries.set(JSON.stringify([itemId, store]), {
+            ...savedItem,
+            entryId: JSON.stringify([itemId, store]),
+            shoppingStoreType: store,
+            purchased: entry.purchased,
+          });
         }
         return [...entries.values()];
       });
     }
-    setRecentLocations((current) => rememberPlace(draft.location, current));
+    setRecentLocations((current) => rememberPlace(location, current));
     setRecentStores((current) =>
-      draft.storeTypes.reduce(
+      storeTypes.reduce(
         (next, store) => rememberPlace(store, next),
         current,
       ),
@@ -382,8 +424,8 @@ export function StockProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const deleteItem = useCallback((id: string) => {
-    setStorageError(null);
     setItems((current) => current.filter((item) => item.id !== id));
+    setShoppingList((current) => current.filter((entry) => entry.id !== id));
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
   }, []);
 
@@ -403,7 +445,6 @@ export function StockProvider({ children }: { children: ReactNode }) {
             ]
           : [];
       });
-      setStorageError(null);
       setShoppingList((current) => [
         ...current.filter((item) => item.shoppingStoreType !== storeType),
         ...replacementItems,
@@ -414,7 +455,6 @@ export function StockProvider({ children }: { children: ReactNode }) {
   );
 
   const togglePurchased = useCallback((entryId: string) => {
-    setStorageError(null);
     setShoppingList((current) =>
       current.map((item) =>
         item.entryId === entryId
@@ -426,12 +466,12 @@ export function StockProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearPurchased = useCallback(() => {
-    setStorageError(null);
     setShoppingList((current) => current.filter((item) => !item.purchased));
   }, []);
 
   const importBackup = useCallback(
     (data: unknown) => {
+      if (loadError) throw new Error(LOAD_ERROR);
       const record = Array.isArray(data) ? {} : asRecord(data);
       const source =
         Array.isArray(data)
@@ -505,7 +545,6 @@ export function StockProvider({ children }: { children: ReactNode }) {
         return true;
       });
 
-      setStorageError(null);
       setItems((current) => [...current, ...newItems]);
       setShoppingList((current) => [...current, ...newShoppingList]);
       setRecentLocations((current) =>
@@ -521,14 +560,15 @@ export function StockProvider({ children }: { children: ReactNode }) {
         shoppingListAddedCount: newShoppingList.length,
       };
     },
-    [items, shoppingList],
+    [items, loadError, shoppingList],
   );
 
   const value = useMemo(
     () => ({
       ...savedData,
       isLoading,
-      storageError,
+      // A load failure stays visible until the app restarts.
+      storageError: loadError ?? storageError,
       saveItem,
       deleteItem,
       createBuyList,
@@ -539,6 +579,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
     [
       savedData,
       isLoading,
+      loadError,
       storageError,
       saveItem,
       deleteItem,

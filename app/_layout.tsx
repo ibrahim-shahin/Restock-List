@@ -15,6 +15,10 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useColors } from '@/hooks/useColors';
 import { StockProvider } from '@/state/StockContext';
 
+// Screens opened straight from a link still get the tabs underneath them,
+// so their close and back buttons have somewhere to go.
+export const unstable_settings = { anchor: '(tabs)' };
+
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 

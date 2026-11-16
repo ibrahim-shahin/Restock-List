@@ -58,7 +58,7 @@ export default function StockCheckScreen() {
   }
 
   function viewBuyList() {
-    router.replace('/(tabs)/shopping');
+    router.dismissTo('/(tabs)/shopping');
   }
 
   return (

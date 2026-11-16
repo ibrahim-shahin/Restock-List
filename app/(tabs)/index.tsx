@@ -111,7 +111,7 @@ export default function StockHomeScreen() {
           <View style={styles.topActions}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Account and data options"
+              accessibilityLabel="Back up or restore your stock"
               onPress={() => router.push('/data-tools')}
               style={({ pressed }) => [
                 styles.dataButton,
@@ -120,8 +120,8 @@ export default function StockHomeScreen() {
               ]}
               testID="data-tools-button"
             >
-              <Feather name="repeat" size={15} color={colors.primary} />
-              <Text style={[styles.addText, { color: colors.primary }]}>Account</Text>
+              <Feather name="archive" size={15} color={colors.primary} />
+              <Text style={[styles.addText, { color: colors.primary }]}>Backup</Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"

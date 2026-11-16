@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useColors } from '@/hooks/useColors';
+import { cleanQuantityInput } from '@/utils/quantity';
 import { useStock, type StockItemDraft } from '@/state/StockContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -239,7 +240,7 @@ export default function ItemFormScreen() {
             <TextInput
               accessibilityLabel="Minimum quantity"
               keyboardType="number-pad"
-              onChangeText={(text) => setMinimumQuantity(text.replace(/[^0-9]/g, ''))}
+              onChangeText={(text) => setMinimumQuantity(cleanQuantityInput(text))}
               placeholder="2"
               placeholderTextColor={colors.mutedForeground}
               style={fieldStyle}
@@ -252,7 +253,7 @@ export default function ItemFormScreen() {
             <TextInput
               accessibilityLabel="Restock quantity"
               keyboardType="number-pad"
-              onChangeText={(text) => setRestockQuantity(text.replace(/[^0-9]/g, ''))}
+              onChangeText={(text) => setRestockQuantity(cleanQuantityInput(text))}
               placeholder="4"
               placeholderTextColor={colors.mutedForeground}
               style={fieldStyle}

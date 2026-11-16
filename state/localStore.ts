@@ -77,19 +77,3 @@ export async function setLocalItem(
   );
   await removeLegacyValue(key);
 }
-
-export async function removeLocalItem(key: string): Promise<void> {
-  if (Platform.OS === 'web') {
-    await AsyncStorage.removeItem(key);
-    return;
-  }
-
-  const database = await getDatabase();
-  await database.runAsync(
-    `INSERT INTO ${TABLE_NAME} (key, value, is_deleted)
-     VALUES (?, '', 1)
-     ON CONFLICT(key) DO UPDATE SET value = '', is_deleted = 1`,
-    key,
-  );
-  await removeLegacyValue(key);
-}

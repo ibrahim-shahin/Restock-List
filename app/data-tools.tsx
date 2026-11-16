@@ -119,7 +119,7 @@ export default function DataToolsScreen() {
             Keep a copy of your stock
           </Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            Your stock is saved only on this phone. Export a backup now and then so you can restore it on a new phone.
+            Your stock is saved on this phone. Export a backup now and then so you can restore it on a new phone.
           </Text>
         </View>
 
@@ -221,7 +221,7 @@ export default function DataToolsScreen() {
         </View>
 
         <Text style={[styles.privacyNote, { color: colors.mutedForeground }]}>
-          Your stock is stored only on this device. Export JSON for a portable backup.
+          {"Home Stock doesn't send your stock anywhere. Export JSON for a portable backup."}
         </Text>
       </KeyboardAwareScrollViewCompat>
     </View>
