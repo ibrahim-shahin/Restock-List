@@ -1,8 +1,9 @@
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
-import React, { useState } from 'react';
+import { router, useIsFocused } from 'expo-router';
+import React, { useEffect, useEffectEvent, useState } from 'react';
 import {
+  BackHandler,
   Platform,
   Pressable,
   ScrollView,
@@ -13,20 +14,22 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useStock } from '@/state/StockContext';
+import { nextAnswers, previousAnswers, shortItemIds } from '@/utils/stockCheck';
 
 export default function StockCheckScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { items, createBuyList } = useStock();
   const [selectedStoreType, setSelectedStoreType] = useState<string | null>(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [shortItems, setShortItems] = useState<string[]>([]);
-  const [isComplete, setIsComplete] = useState(false);
+  const [answers, setAnswers] = useState<boolean[]>([]);
 
   const storeTypes = [...new Set(items.flatMap((item) => item.storeTypes))];
   const storeItems = selectedStoreType
     ? items.filter((item) => item.storeTypes.includes(selectedStoreType))
     : [];
+  const currentIndex = answers.length;
+  const isComplete = storeItems.length > 0 && currentIndex >= storeItems.length;
+  const shortItems = shortItemIds(storeItems.map((item) => item.id), answers);
   const currentItem = storeItems[currentIndex];
   const progress = storeItems.length
     ? (currentIndex / storeItems.length) * 100
@@ -34,28 +37,44 @@ export default function StockCheckScreen() {
 
   function chooseAnotherStore() {
     setSelectedStoreType(null);
-    setCurrentIndex(0);
-    setShortItems([]);
-    setIsComplete(false);
+    setAnswers([]);
   }
 
   function answer(hasEnough: boolean) {
     if (!currentItem) return;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const nextShortItems = hasEnough
-      ? shortItems
-      : [...shortItems, currentItem.id];
-
-    if (currentIndex + 1 >= storeItems.length) {
-      setShortItems(nextShortItems);
-      createBuyList(nextShortItems, selectedStoreType ?? '');
-      setIsComplete(true);
-      return;
+    const next = nextAnswers(answers, hasEnough, storeItems.length);
+    setAnswers(next);
+    if (next.length === storeItems.length) {
+      createBuyList(
+        shortItemIds(storeItems.map((item) => item.id), next),
+        selectedStoreType ?? '',
+      );
     }
-
-    if (!hasEnough) setShortItems(nextShortItems);
-    setCurrentIndex((index) => index + 1);
   }
+
+  // Going back from the result re-opens the last item; answering it again
+  // rebuilds that store's buy list.
+  function goBackOneItem() {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setAnswers((current) => previousAnswers(current));
+  }
+
+  // Android's back button leaves the store's check for the store list, like
+  // the arrow at the top; "Previous item" is the way to undo an answer. It
+  // only listens while this screen is showing, so a screen opened on top
+  // gets the back button.
+  const isFocused = useIsFocused();
+  const isChecking = selectedStoreType !== null && !isComplete;
+  const onHardwareBack = useEffectEvent(() => chooseAnotherStore());
+  useEffect(() => {
+    if (!isChecking || !isFocused) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      onHardwareBack();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [isChecking, isFocused]);
 
   function viewBuyList() {
     router.dismissTo('/(tabs)/shopping');
@@ -148,9 +167,7 @@ export default function StockCheckScreen() {
                   key={storeType}
                   accessibilityRole="button"
                   onPress={() => {
-                    setCurrentIndex(0);
-                    setShortItems([]);
-                    setIsComplete(false);
+                    setAnswers([]);
                     setSelectedStoreType(storeType);
                   }}
                   style={({ pressed }) => [
@@ -223,6 +240,17 @@ export default function StockCheckScreen() {
             <Feather name="repeat" size={15} color={colors.primary} />
             <Text style={[styles.anotherStoreText, { color: colors.primary }]}>
               Check another store
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={goBackOneItem}
+            style={({ pressed }) => [styles.backStepButton, pressed && styles.pressed]}
+            testID="change-last-answer-button"
+          >
+            <Feather name="corner-up-left" size={14} color={colors.mutedForeground} />
+            <Text style={[styles.backStepText, { color: colors.mutedForeground }]}>
+              Change my last answer
             </Text>
           </Pressable>
         </View>
@@ -319,6 +347,19 @@ export default function StockCheckScreen() {
               </Text>
               <Feather name="arrow-right" size={17} color={colors.mutedForeground} />
             </Pressable>
+            {currentIndex > 0 ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={goBackOneItem}
+                style={({ pressed }) => [styles.backStepButton, pressed && styles.pressed]}
+                testID="previous-item-button"
+              >
+                <Feather name="corner-up-left" size={14} color={colors.mutedForeground} />
+                <Text style={[styles.backStepText, { color: colors.mutedForeground }]}>
+                  Previous item
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         </ScrollView>
       ) : null}
@@ -367,5 +408,7 @@ const styles = StyleSheet.create({
   primaryButtonText: { fontFamily: 'Inter_700Bold', fontSize: 13 },
   anotherStoreButton: { minHeight: 46, borderRadius: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 18, marginTop: 10 },
   anotherStoreText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  backStepButton: { minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 6 },
+  backStepText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   pressed: { opacity: 0.7, transform: [{ scale: 0.99 }] },
 });
