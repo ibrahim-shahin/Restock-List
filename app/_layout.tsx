@@ -13,8 +13,11 @@ import {
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useColors } from '@/hooks/useColors';
+import { useReminderTaps } from '@/hooks/useReminderTaps';
 import { BackupStatusProvider } from '@/state/BackupStatus';
+import { ReminderProvider } from '@/state/Reminder';
 import { StockProvider } from '@/state/StockContext';
+import { showRemindersWhileOpen } from '@/utils/reminders';
 
 // Screens opened straight from a link still get the tabs underneath them,
 // so their close and back buttons have somewhere to go.
@@ -22,9 +25,11 @@ export const unstable_settings = { anchor: '(tabs)' };
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
+showRemindersWhileOpen();
 
 function RootLayoutNav() {
   const colors = useColors();
+  useReminderTaps();
 
   const screenOptions = {
     headerBackTitle: 'Back',
@@ -35,12 +40,15 @@ function RootLayoutNav() {
   return (
     <StockProvider>
       <BackupStatusProvider>
-        <Stack screenOptions={screenOptions}>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="item-form" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="stock-check" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="data-tools" options={{ presentation: 'modal' }} />
-        </Stack>
+        <ReminderProvider>
+          <Stack screenOptions={screenOptions}>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="item-form" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="stock-check" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="data-tools" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="reminder" options={{ presentation: 'modal' }} />
+          </Stack>
+        </ReminderProvider>
       </BackupStatusProvider>
     </StockProvider>
   );

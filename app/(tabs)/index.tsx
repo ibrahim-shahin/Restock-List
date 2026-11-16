@@ -14,8 +14,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StockItemCard } from '@/components/StockItemCard';
 import { useColors } from '@/hooks/useColors';
 import { useBackupStatus } from '@/state/BackupStatus';
+import { useReminder } from '@/state/Reminder';
 import { useStock } from '@/state/StockContext';
 import { backupReminder } from '@/utils/backup';
+import { describeReminder } from '@/utils/reminders';
 
 type SortBy = 'date' | 'name';
 
@@ -59,6 +61,7 @@ export default function StockHomeScreen() {
   const insets = useSafeAreaInsets();
   const { items, shoppingList, isLoading, storageError, loadProblem, loadNotice } = useStock();
   const { lastBackupAt, checkedAt } = useBackupStatus();
+  const { reminder: weeklyReminder } = useReminder();
   const reminder =
     isLoading || checkedAt === null
       ? null
@@ -194,6 +197,31 @@ export default function StockHomeScreen() {
               <Feather name="arrow-right" size={14} color={colors.primary} />
             </View>
           </View>
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityHint="Opens the weekly reminder settings"
+          onPress={() => router.push('/reminder')}
+          style={({ pressed }) => [
+            styles.reminderCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
+            pressed && styles.pressed,
+          ]}
+          testID="weekly-reminder-button"
+        >
+          <View style={[styles.reminderIcon, { backgroundColor: colors.accent }]}>
+            <Feather name="bell" size={16} color={colors.primary} />
+          </View>
+          <View style={styles.reminderBody}>
+            <Text style={[styles.reminderTitle, { color: colors.foreground }]}>
+              Weekly stock check reminder
+            </Text>
+            <Text style={[styles.reminderCopy, { color: colors.mutedForeground }]}>
+              {weeklyReminder ? describeReminder(weeklyReminder) : 'Loading'}
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
         </Pressable>
 
         {storageError ? (
