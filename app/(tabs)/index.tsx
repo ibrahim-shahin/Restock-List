@@ -8,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +19,7 @@ import { useReminder } from '@/state/Reminder';
 import { useStock } from '@/state/StockContext';
 import { backupReminder } from '@/utils/backup';
 import { describeReminder } from '@/utils/reminders';
+import { matchesSearch } from '@/utils/search';
 
 type SortBy = 'date' | 'name';
 
@@ -71,6 +73,7 @@ export default function StockHomeScreen() {
   const [descending, setDescending] = useState(true);
   const [locationFilter, setLocationFilter] = useState<string | null>(null);
   const [storeFilter, setStoreFilter] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
   const locations = useMemo(
     () => [...new Set(items.map((item) => item.location))].sort((a, b) => a.localeCompare(b)),
     [items],
@@ -85,7 +88,8 @@ export default function StockHomeScreen() {
         .filter(
           (item) =>
             (!locationFilter || item.location === locationFilter) &&
-            (!storeFilter || item.storeTypes.includes(storeFilter)),
+            (!storeFilter || item.storeTypes.includes(storeFilter)) &&
+            matchesSearch(item, query),
         )
         .sort((a, b) => {
           const comparison =
@@ -94,7 +98,7 @@ export default function StockHomeScreen() {
               : a.createdAt - b.createdAt;
           return descending ? -comparison : comparison;
         }),
-    [items, locationFilter, storeFilter, sortBy, descending],
+    [items, locationFilter, storeFilter, query, sortBy, descending],
   );
 
   return (
@@ -107,6 +111,7 @@ export default function StockHomeScreen() {
             paddingBottom: insets.bottom + (Platform.OS === 'web' ? 118 : 104),
           },
         ]}
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.topBar}>
@@ -324,6 +329,36 @@ export default function StockHomeScreen() {
 
         {items.length > 0 ? (
           <View style={[styles.filterPanel, { backgroundColor: colors.card }]}>
+            <View
+              style={[
+                styles.searchBox,
+                { backgroundColor: colors.background, borderColor: colors.border },
+              ]}
+            >
+              <Feather name="search" size={15} color={colors.mutedForeground} />
+              <TextInput
+                accessibilityLabel="Search your stock"
+                autoCorrect={false}
+                onChangeText={setQuery}
+                placeholder="Search items, places or stores"
+                placeholderTextColor={colors.mutedForeground}
+                returnKeyType="search"
+                style={[styles.searchInput, { color: colors.foreground }]}
+                value={query}
+                testID="stock-search-input"
+              />
+              {query ? (
+                <Pressable
+                  accessibilityLabel="Clear search"
+                  accessibilityRole="button"
+                  hitSlop={10}
+                  onPress={() => setQuery('')}
+                  testID="clear-search-button"
+                >
+                  <Feather name="x" size={16} color={colors.mutedForeground} />
+                </Pressable>
+              ) : null}
+            </View>
             <View style={styles.filterSection}>
               <Text style={[styles.filterLabel, { color: colors.mutedForeground }]}>
                 SORT BY
@@ -459,10 +494,12 @@ export default function StockHomeScreen() {
               <Feather name="filter" size={20} color={colors.primary} />
             </View>
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              No items match these filters
+              {query.trim() ? 'No items match your search' : 'No items match these filters'}
             </Text>
             <Text style={[styles.emptyCopy, { color: colors.mutedForeground }]}>
-              Choose another storage place or store to see more items.
+              {query.trim()
+                ? 'Try another word, or clear the search to see everything.'
+                : 'Choose another storage place or store to see more items.'}
             </Text>
           </View>
         ) : (
@@ -585,6 +622,8 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', gap: 11 },
   statCard: { flex: 1, borderRadius: 18, padding: 15, gap: 4 },
   filterPanel: { borderRadius: 18, padding: 14, gap: 13 },
+  searchBox: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 13, paddingHorizontal: 12 },
+  searchInput: { flex: 1, minHeight: 40, fontFamily: 'Inter_500Medium', fontSize: 13, paddingVertical: 8 },
   filterSection: { gap: 7 },
   filterLabel: { fontFamily: 'Inter_700Bold', fontSize: 8, letterSpacing: 1 },
   filterChips: { flexDirection: 'row', alignItems: 'center', gap: 7 },
