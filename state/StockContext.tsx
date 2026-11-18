@@ -29,6 +29,15 @@ export type BuyListItem = StockItem & {
   entryId: string;
   shoppingStoreType: string;
   purchased: boolean;
+  // Added by hand for one trip: not part of the stock or its checks.
+  oneTime?: boolean;
+};
+
+export type OneTimeItemDraft = {
+  name: string;
+  quantity: number;
+  unit: string;
+  store: string;
 };
 
 export type SavedData = {
@@ -44,6 +53,9 @@ type StockContextValue = SavedData & {
   saveItem: (draft: StockItemDraft, id?: string) => string | null;
   deleteItem: (id: string) => void;
   createBuyList: (itemIds: string[], storeType: string) => void;
+  // Returns null when added, otherwise a message saying what to fix.
+  addOneTimeItem: (draft: OneTimeItemDraft) => string | null;
+  removeFromBuyList: (entryId: string) => void;
   togglePurchased: (entryId: string) => void;
   clearPurchased: () => void;
   // Set while the saved stock can't be loaded; saving stays off meanwhile.
@@ -231,6 +243,47 @@ function normalizeStockItem(
   };
 }
 
+// Can't clash with stock item ids, which are names without spaces.
+function oneTimeEntryId(): string {
+  return `once-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeOneTimeEntry(value: unknown): BuyListItem {
+  const record = asRecord(value);
+  const name = typeof record.name === 'string' ? record.name.trim() : '';
+  const store =
+    typeof record.shoppingStoreType === 'string' ? record.shoppingStoreType.trim() : '';
+  const quantity = record.restockQuantity;
+  if (
+    !name ||
+    !store ||
+    typeof quantity !== 'number' ||
+    !Number.isInteger(quantity) ||
+    quantity < 1
+  ) {
+    throw new Error(`“${name || 'A one-time item'}” is missing valid details.`);
+  }
+  const id =
+    typeof record.id === 'string' && record.id.startsWith('once-') ? record.id : oneTimeEntryId();
+  return {
+    id,
+    name,
+    minimumQuantity: 0,
+    restockQuantity: quantity,
+    unit: typeof record.unit === 'string' ? record.unit.trim() : '',
+    location: '',
+    storeTypes: [store],
+    createdAt:
+      typeof record.createdAt === 'number' && Number.isFinite(record.createdAt)
+        ? record.createdAt
+        : Date.now(),
+    entryId: JSON.stringify([id, store]),
+    shoppingStoreType: store,
+    purchased: record.purchased === true,
+    oneTime: true,
+  };
+}
+
 // Without onInvalid, any invalid record throws. With it, invalid records are
 // reported and left out, so the rest of the saved stock still loads.
 function normalizeSavedData(
@@ -275,6 +328,11 @@ function normalizeSavedData(
   });
   function addBuyListEntry(value: unknown) {
     const itemRecord = asRecord(value);
+    if (itemRecord.oneTime === true) {
+      const entry = normalizeOneTimeEntry(value);
+      shoppingListByEntryId.set(entry.entryId, entry);
+      return;
+    }
     const sourceId =
       typeof itemRecord.id === 'string' ? itemRecord.id : '';
     const item = normalizeStockItem(
@@ -546,7 +604,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
       setShoppingList((current) => {
         const entries = new Map<string, BuyListItem>();
         for (const entry of current) {
-          if (entry.id !== existingItem.id) {
+          if (entry.oneTime || entry.id !== existingItem.id) {
             entries.set(entry.entryId, entry);
             continue;
           }
@@ -580,7 +638,9 @@ export function StockProvider({ children }: { children: ReactNode }) {
 
   const deleteItem = useCallback((id: string) => {
     setItems((current) => current.filter((item) => item.id !== id));
-    setShoppingList((current) => current.filter((entry) => entry.id !== id));
+    setShoppingList((current) =>
+      current.filter((entry) => entry.oneTime || entry.id !== id),
+    );
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
   }, []);
 
@@ -603,11 +663,66 @@ export function StockProvider({ children }: { children: ReactNode }) {
       setShoppingList((current) => [
         ...current.filter((item) => item.shoppingStoreType !== storeType),
         ...replacementItems,
+        // One-time items stay until they're ticked off, even when the check
+        // adds the same thing from stock: they can have their own amount and note.
+        ...current.filter(
+          (entry) => entry.shoppingStoreType === storeType && entry.oneTime && !entry.purchased,
+        ),
       ]);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
     [items],
   );
+
+  const addOneTimeItem = useCallback((draft: OneTimeItemDraft) => {
+    const current = currentDataRef.current;
+    const name = draft.name.trim();
+    const store = matchSpelling(draft.store, [
+      ...current.items.flatMap((item) => item.storeTypes),
+      ...current.shoppingList.map((entry) => entry.shoppingStoreType),
+      ...current.recentStores,
+    ]);
+    if (!name) return 'Add what you need.';
+    if (!store) return 'Choose where you will buy it.';
+    if (!Number.isInteger(draft.quantity) || draft.quantity < 1) {
+      return 'Enter how many you need.';
+    }
+    const nameKey = itemIdFromName(name);
+    const storeKey = store.toLocaleLowerCase();
+    const alreadyListed = current.shoppingList.some(
+      (entry) =>
+        !entry.purchased &&
+        entry.shoppingStoreType.toLocaleLowerCase() === storeKey &&
+        itemIdFromName(entry.name) === nameKey,
+    );
+    if (alreadyListed) return `${name} is already on your list for ${store}.`;
+
+    const id = oneTimeEntryId();
+    setShoppingList((list) => [
+      ...list,
+      {
+        id,
+        name,
+        minimumQuantity: 0,
+        restockQuantity: draft.quantity,
+        unit: draft.unit.trim(),
+        location: '',
+        storeTypes: [store],
+        createdAt: Date.now(),
+        entryId: JSON.stringify([id, store]),
+        shoppingStoreType: store,
+        purchased: false,
+        oneTime: true,
+      },
+    ]);
+    setRecentStores((recent) => rememberPlace(store, recent));
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    return null;
+  }, []);
+
+  const removeFromBuyList = useCallback((entryId: string) => {
+    setShoppingList((current) => current.filter((entry) => entry.entryId !== entryId));
+  }, []);
 
   const togglePurchased = useCallback((entryId: string) => {
     setShoppingList((current) =>
@@ -681,6 +796,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
       }
 
       const remappedShoppingList = normalizedBackup.shoppingList.map((entry) => {
+        if (entry.oneTime) return entry;
         const itemId = importedItemIdByName.get(itemIdFromName(entry.name));
         if (!itemId) return entry;
         return {
@@ -735,6 +851,8 @@ export function StockProvider({ children }: { children: ReactNode }) {
       saveItem,
       deleteItem,
       createBuyList,
+      addOneTimeItem,
+      removeFromBuyList,
       togglePurchased,
       clearPurchased,
       importBackup,
@@ -754,6 +872,8 @@ export function StockProvider({ children }: { children: ReactNode }) {
       saveItem,
       deleteItem,
       createBuyList,
+      addOneTimeItem,
+      removeFromBuyList,
       togglePurchased,
       clearPurchased,
       importBackup,

@@ -16,68 +16,91 @@ import { useColors } from '@/hooks/useColors';
 import { useStock } from '@/state/StockContext';
 import type { BuyListItem } from '@/state/StockContext';
 
+function quantityLabel(item: BuyListItem): string {
+  return `${item.restockQuantity} ${item.unit || (item.restockQuantity === 1 ? 'unit' : 'units')}`;
+}
+
 function BuyRow({
   item,
   onToggle,
+  onRemove,
 }: {
   item: BuyListItem;
   onToggle: () => void;
+  onRemove: () => void;
 }) {
   const colors = useColors();
 
   return (
-    <Pressable
-      accessibilityRole="checkbox"
-      accessibilityState={{ checked: item.purchased }}
-      accessibilityLabel={`${item.purchased ? 'Mark not purchased' : 'Mark purchased'}: ${item.name}`}
-      onPress={onToggle}
-      style={({ pressed }) => [
-        styles.buyRow,
-        { borderBottomColor: colors.border },
-        pressed && styles.pressed,
-      ]}
-      testID={`buy-item-${item.id}`}
-    >
-      <View
-        style={[
-          styles.checkbox,
-          {
-            backgroundColor: item.purchased ? colors.primary : 'transparent',
-            borderColor: item.purchased ? colors.primary : colors.border,
-          },
-        ]}
+    <View style={[styles.buyRow, { borderBottomColor: colors.border }]}>
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: item.purchased }}
+        accessibilityLabel={`${item.purchased ? 'Mark not purchased' : 'Mark purchased'}: ${item.name}`}
+        onPress={onToggle}
+        style={({ pressed }) => [styles.buyToggle, pressed && styles.pressed]}
+        testID={`buy-item-${item.id}`}
       >
-        {item.purchased ? (
-          <Feather name="check" size={13} color={colors.primaryForeground} />
-        ) : null}
-      </View>
-      <View style={styles.buyDetails}>
-        <Text
+        <View
           style={[
-            styles.buyName,
-            { color: item.purchased ? colors.mutedForeground : colors.foreground },
-            item.purchased && styles.strikethrough,
+            styles.checkbox,
+            {
+              backgroundColor: item.purchased ? colors.primary : 'transparent',
+              borderColor: item.purchased ? colors.primary : colors.border,
+            },
           ]}
         >
-          {item.name}
-        </Text>
-        <Text style={[styles.buyLocation, { color: colors.mutedForeground }]}>
-          {item.location}
-        </Text>
-      </View>
-      <View style={[styles.quantityPill, { backgroundColor: colors.accent }]}>
-        <Text style={[styles.quantityText, { color: colors.primary }]}>
-          {item.restockQuantity} {item.unit || (item.restockQuantity === 1 ? 'unit' : 'units')}
-        </Text>
-      </View>
-    </Pressable>
+          {item.purchased ? (
+            <Feather name="check" size={13} color={colors.primaryForeground} />
+          ) : null}
+        </View>
+        <View style={styles.buyDetails}>
+          <Text
+            style={[
+              styles.buyName,
+              { color: item.purchased ? colors.mutedForeground : colors.foreground },
+              item.purchased && styles.strikethrough,
+            ]}
+          >
+            {item.name}
+          </Text>
+          {item.oneTime ? (
+            <View style={styles.oneTimeLine}>
+              <Feather name="zap" size={10} color={colors.primary} />
+              <Text style={[styles.oneTimeText, { color: colors.primary }]}>Just this once</Text>
+            </View>
+          ) : (
+            <Text style={[styles.buyLocation, { color: colors.mutedForeground }]}>
+              {item.location}
+            </Text>
+          )}
+        </View>
+        <View style={[styles.quantityPill, { backgroundColor: colors.accent }]}>
+          <Text style={[styles.quantityText, { color: colors.primary }]}>
+            {quantityLabel(item)}
+          </Text>
+        </View>
+      </Pressable>
+      {item.oneTime ? (
+        <Pressable
+          accessibilityLabel={`Remove ${item.name} from the buy list`}
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={onRemove}
+          style={({ pressed }) => [styles.removeButton, pressed && styles.pressed]}
+          testID={`remove-buy-item-${item.id}`}
+        >
+          <Feather name="x" size={15} color={colors.mutedForeground} />
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
 
 export default function ShoppingListScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { shoppingList, items, togglePurchased, clearPurchased } = useStock();
+  const { shoppingList, items, togglePurchased, clearPurchased, removeFromBuyList } = useStock();
   const activeItems = shoppingList.filter((item) => !item.purchased);
   const purchasedItems = shoppingList.filter((item) => item.purchased);
   const storeGroups = [...new Set(shoppingList.map((item) => item.shoppingStoreType))];
@@ -90,10 +113,10 @@ export default function ShoppingListScreen() {
         store,
         ...shoppingList
           .filter((item) => item.shoppingStoreType === store)
-          .map((item) => {
-            const quantity = `${item.restockQuantity} ${item.unit || (item.restockQuantity === 1 ? 'unit' : 'units')}`;
-            return `${item.purchased ? '✓' : '•'} ${item.name} — ${quantity} (${item.location})`;
-          }),
+          .map(
+            (item) =>
+              `${item.purchased ? '✓' : '•'} ${item.name} — ${quantityLabel(item)}${item.oneTime ? '' : ` (${item.location})`}`,
+          ),
         '',
       ]),
     ].join('\n').trim();
@@ -155,6 +178,16 @@ export default function ShoppingListScreen() {
                 Check stock
               </Text>
             </Pressable>
+            <Pressable
+              onPress={() => router.push('/one-time-item')}
+              style={styles.addLink}
+              testID="empty-add-one-time-item"
+            >
+              <Feather name="zap" size={14} color={colors.primary} />
+              <Text style={[styles.addLinkText, { color: colors.primary }]}>
+                Add a one-time item
+              </Text>
+            </Pressable>
             {items.length === 0 ? (
               <Pressable
                 onPress={() => router.push('/item-form')}
@@ -204,21 +237,38 @@ export default function ShoppingListScreen() {
               </View>
             </View>
 
-            <Pressable
-              accessibilityRole="button"
-              onPress={shareBuyList}
-              style={({ pressed }) => [
-                styles.shareButton,
-                { backgroundColor: colors.secondary },
-                pressed && styles.pressed,
-              ]}
-              testID="share-buy-list-button"
-            >
-              <Feather name="share-2" size={15} color={colors.primary} />
-              <Text style={[styles.shareText, { color: colors.primary }]}>
-                Share buy list
-              </Text>
-            </Pressable>
+            <View style={styles.actionRow}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push('/one-time-item')}
+                style={({ pressed }) => [
+                  styles.shareButton,
+                  { backgroundColor: colors.primary },
+                  pressed && styles.pressed,
+                ]}
+                testID="add-one-time-item-button"
+              >
+                <Feather name="plus" size={15} color={colors.primaryForeground} />
+                <Text style={[styles.shareText, { color: colors.primaryForeground }]}>
+                  One-time item
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={shareBuyList}
+                style={({ pressed }) => [
+                  styles.shareButton,
+                  { backgroundColor: colors.secondary },
+                  pressed && styles.pressed,
+                ]}
+                testID="share-buy-list-button"
+              >
+                <Feather name="share-2" size={15} color={colors.primary} />
+                <Text style={[styles.shareText, { color: colors.primary }]}>
+                  Share
+                </Text>
+              </Pressable>
+            </View>
 
             {storeGroups.map((storeType) => {
               const group = shoppingList.filter((item) => item.shoppingStoreType === storeType);
@@ -241,8 +291,23 @@ export default function ShoppingListScreen() {
                         key={item.entryId}
                         item={item}
                         onToggle={() => togglePurchased(item.entryId)}
+                        onRemove={() => removeFromBuyList(item.entryId)}
                       />
                     ))}
+                    <Pressable
+                      accessibilityLabel={`Add a one-time item for ${storeType}`}
+                      accessibilityRole="button"
+                      onPress={() =>
+                        router.push({ pathname: '/one-time-item', params: { store: storeType } })
+                      }
+                      style={({ pressed }) => [styles.addHereRow, pressed && styles.pressed]}
+                      testID={`add-one-time-item-${storeType}`}
+                    >
+                      <Feather name="plus" size={14} color={colors.mutedForeground} />
+                      <Text style={[styles.addHereText, { color: colors.mutedForeground }]}>
+                        Add something for this trip
+                      </Text>
+                    </Pressable>
                   </View>
                 </View>
               );
@@ -308,7 +373,13 @@ const styles = StyleSheet.create({
   progressIcon: { height: 36, width: 36, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   progressTrack: { position: 'absolute', left: 16, right: 16, bottom: 0, height: 3, borderBottomLeftRadius: 10, borderBottomRightRadius: 10, overflow: 'hidden' },
   progressFill: { height: 3, borderRadius: 3 },
-  shareButton: { minHeight: 44, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  actionRow: { flexDirection: 'row', gap: 10 },
+  shareButton: { flex: 1, minHeight: 44, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  oneTimeLine: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  oneTimeText: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
+  removeButton: { height: 36, width: 28, alignItems: 'center', justifyContent: 'center' },
+  addHereRow: { minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  addHereText: { fontFamily: 'Inter_500Medium', fontSize: 12 },
   shareText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   storeGroup: { gap: 9 },
   storeHeading: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 2 },
@@ -316,7 +387,8 @@ const styles = StyleSheet.create({
   storeTitle: { fontFamily: 'Inter_700Bold', fontSize: 14, flex: 1 },
   storeCount: { fontFamily: 'Inter_500Medium', fontSize: 11 },
   groupCard: { borderRadius: 18, overflow: 'hidden', paddingHorizontal: 13 },
-  buyRow: { minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: 11, borderBottomWidth: StyleSheet.hairlineWidth },
+  buyRow: { minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  buyToggle: { flex: 1, minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: 11 },
   checkbox: { height: 22, width: 22, borderRadius: 8, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   buyDetails: { flex: 1, gap: 4 },
   buyName: { fontFamily: 'Inter_600SemiBold', fontSize: 13 },

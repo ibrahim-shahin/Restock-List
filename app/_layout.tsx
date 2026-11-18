@@ -46,6 +46,7 @@ function RootLayoutNav() {
             <Stack.Screen name="item-form" options={{ presentation: 'modal' }} />
             <Stack.Screen name="stock-check" options={{ presentation: 'modal' }} />
             <Stack.Screen name="data-tools" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="one-time-item" options={{ presentation: 'modal' }} />
             <Stack.Screen name="reminder" options={{ presentation: 'modal' }} />
           </Stack>
         </ReminderProvider>

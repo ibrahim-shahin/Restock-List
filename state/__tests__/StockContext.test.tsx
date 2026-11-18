@@ -652,3 +652,180 @@ describe('recovering saved stock', () => {
     expect(result.current.storageError).toBeNull();
   });
 });
+
+describe('one-time items', () => {
+  const candles = { name: ' Birthday candles ', quantity: 2, unit: 'packs', store: 'supermarket' };
+
+  function buyListNames(result: { current: { shoppingList: { name: string }[] } }) {
+    return result.current.shoppingList.map((entry) => entry.name);
+  }
+
+  it('adds a one-time item to the buy list without adding it to the stock', async () => {
+    const { result } = await renderStock();
+    await act(() => {
+      result.current.saveItem(milk);
+    });
+
+    let message: string | null = 'not called';
+    await act(() => {
+      message = result.current.addOneTimeItem(candles);
+    });
+
+    expect(message).toBeNull();
+    expect(result.current.items.map((item) => item.id)).toEqual(['wholemilk']);
+    expect(result.current.shoppingList).toEqual([
+      expect.objectContaining({
+        name: 'Birthday candles',
+        restockQuantity: 2,
+        unit: 'packs',
+        shoppingStoreType: 'Supermarket',
+        purchased: false,
+        oneTime: true,
+      }),
+    ]);
+    await waitFor(() => expect(savedSnapshot().shoppingList).toHaveLength(1));
+  });
+
+  it('says what to fix', async () => {
+    const { result } = await renderStock();
+    await act(() => {
+      result.current.addOneTimeItem({ ...candles, store: 'Supermarket' });
+    });
+
+    expect(result.current.addOneTimeItem({ ...candles, name: '  ' })).toBe('Add what you need.');
+    expect(result.current.addOneTimeItem({ ...candles, store: ' ' })).toBe('Choose where you will buy it.');
+    expect(result.current.addOneTimeItem({ ...candles, name: 'Cake', quantity: 0 })).toBe('Enter how many you need.');
+    expect(result.current.addOneTimeItem({ ...candles, name: 'birthday CANDLES' })).toBe(
+      'birthday CANDLES is already on your list for Supermarket.',
+    );
+    expect(result.current.shoppingList).toHaveLength(1);
+  });
+
+  it('keeps one-time items through a new check of their store until they are ticked off', async () => {
+    const { result } = await renderStock();
+    await act(() => {
+      result.current.saveItem(milk);
+    });
+    await act(() => {
+      result.current.addOneTimeItem(candles);
+    });
+    await act(() => {
+      result.current.addOneTimeItem({ ...candles, name: 'Cake' });
+    });
+    await act(() => {
+      result.current.addOneTimeItem({ ...candles, name: 'Croissants', store: 'Bakery' });
+    });
+    const cake = result.current.shoppingList.find((entry) => entry.name === 'Cake');
+    await act(() => {
+      result.current.togglePurchased(cake?.entryId ?? '');
+    });
+
+    await act(() => {
+      result.current.createBuyList(['wholemilk'], 'Supermarket');
+    });
+
+    expect(buyListNames(result)).toEqual(['Croissants', 'Whole Milk', 'Birthday candles']);
+  });
+
+  it('keeps a one-time item next to the same thing from stock, also when an answer changes', async () => {
+    const { result } = await renderStock();
+    await act(() => {
+      result.current.saveItem(milk);
+    });
+    await act(() => {
+      result.current.addOneTimeItem({ ...candles, name: 'whole milk', quantity: 6 });
+    });
+
+    await act(() => {
+      result.current.createBuyList(['wholemilk'], 'Supermarket');
+    });
+    expect(result.current.shoppingList).toEqual([
+      expect.objectContaining({ id: 'wholemilk', name: 'Whole Milk' }),
+      expect.objectContaining({ name: 'whole milk', restockQuantity: 6, oneTime: true }),
+    ]);
+
+    // "Change my last answer" rebuilds the store's list; the one-time item stays.
+    await act(() => {
+      result.current.createBuyList([], 'Supermarket');
+    });
+    expect(result.current.shoppingList).toEqual([
+      expect.objectContaining({ name: 'whole milk', restockQuantity: 6, oneTime: true }),
+    ]);
+  });
+
+  it('keeps one-time items after the app restarts', async () => {
+    const first = await renderStock();
+    await act(() => {
+      first.result.current.addOneTimeItem(candles);
+    });
+    const { id, entryId } = first.result.current.shoppingList[0];
+    await waitFor(() => expect(savedSnapshot().shoppingList).toHaveLength(1));
+    await first.unmount();
+
+    const second = await renderStock();
+
+    expect(second.result.current.shoppingList).toEqual([
+      expect.objectContaining({ id, entryId, name: 'Birthday candles', oneTime: true }),
+    ]);
+  });
+
+  it('leaves one-time items alone when a stock item is renamed or deleted', async () => {
+    const { result } = await renderStock();
+    await act(() => {
+      result.current.saveItem(milk);
+    });
+    await act(() => {
+      result.current.addOneTimeItem({ ...candles, name: 'Oat Milk' });
+    });
+
+    await act(() => {
+      result.current.saveItem({ ...milk, name: 'Oat Milk' }, 'wholemilk');
+    });
+    await act(() => {
+      result.current.deleteItem('oatmilk');
+    });
+
+    expect(result.current.shoppingList).toEqual([
+      expect.objectContaining({ name: 'Oat Milk', oneTime: true }),
+    ]);
+  });
+
+  it('removes an entry from the buy list', async () => {
+    const { result } = await renderStock();
+    await act(() => {
+      result.current.addOneTimeItem(candles);
+    });
+
+    await act(() => {
+      result.current.removeFromBuyList(result.current.shoppingList[0].entryId);
+    });
+
+    expect(result.current.shoppingList).toEqual([]);
+  });
+
+  it('backs up and restores one-time items without merging them into stock items', async () => {
+    const source = await renderStock();
+    await act(() => {
+      source.result.current.addOneTimeItem({ ...candles, name: 'Whole Milk' });
+    });
+    const { shoppingList, recentStores } = source.result.current;
+    const backup = JSON.parse(JSON.stringify({ items: [], shoppingList, recentLocations: [], recentStores }));
+    await source.unmount();
+    mockStorage.clear();
+
+    const { result } = await renderStock();
+    await act(() => {
+      result.current.saveItem(milk);
+    });
+    await act(() => {
+      result.current.importBackup(backup);
+    });
+    await act(() => {
+      result.current.importBackup(backup);
+    });
+
+    expect(result.current.shoppingList).toEqual([
+      expect.objectContaining({ id: shoppingList[0].id, name: 'Whole Milk', oneTime: true }),
+    ]);
+  });
+});
