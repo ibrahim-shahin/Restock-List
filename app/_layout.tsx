@@ -21,6 +21,7 @@ import { ReminderProvider } from '@/state/Reminder';
 import { SettingsProvider, useSettings } from '@/state/Settings';
 import { StockProvider } from '@/state/StockContext';
 import { showRemindersWhileOpen } from '@/utils/reminders';
+import { WidgetSync } from '@/widget/WidgetSync';
 
 // Screens opened straight from a link still get the tabs underneath them,
 // so their close and back buttons have somewhere to go.
@@ -44,6 +45,7 @@ function RootLayoutNav() {
   return (
     <StockProvider>
       <StatusBar style={colorMode === 'dark' ? 'light' : 'dark'} />
+      <WidgetSync />
       <BackupStatusProvider>
         <ReminderProvider>
           <SideMenuProvider>

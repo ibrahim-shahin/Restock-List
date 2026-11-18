@@ -48,6 +48,26 @@
             "backgroundColor": "#15241D"
           }
         }
+      ],
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "BuyList",
+              "label": "Home Stock buy list",
+              "description": "What you still need to buy, and a button to check your stock",
+              "minWidth": "180dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 3,
+              "targetCellHeight": 2,
+              "maxResizeWidth": "420dp",
+              "maxResizeHeight": "420dp",
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 0
+            }
+          ]
+        }
       ]
     ],
     "experiments": {
