@@ -11,7 +11,7 @@ const mockStock = {
     shoppingList: [],
     recentLocations: ['Fridge'],
     recentStores: ['Supermarket'],
-    importBackup: jest.fn(),
+    importBackup: jest.fn(() => ({ importedCount: 1, skippedCount: 0, shoppingListAddedCount: 0 })),
     isLoading: false,
     loadProblem: null as string | null,
     loadNotice: null as string | null,
@@ -25,6 +25,19 @@ const mockStock = {
 };
 
 jest.mock('@/state/StockContext', () => ({ useStock: () => mockStock.current }));
+const mockSettings = {
+  ...(jest.requireActual('@/state/Settings') as typeof import('@/state/Settings')).DEFAULT_SETTINGS,
+};
+const mockUpdateSettings = jest.fn();
+const mockSaveReminder = jest.fn((_next: unknown) => Promise.resolve(true));
+jest.mock('@/state/Settings', () => ({
+  ...jest.requireActual('@/state/Settings'),
+  useSettings: () => ({ settings: mockSettings, updateSettings: mockUpdateSettings, isReady: true }),
+}));
+jest.mock('@/state/Reminder', () => ({
+  useReminder: () => ({ reminder: { enabled: true, weekday: 7, hour: 10 }, saveReminder: mockSaveReminder }),
+}));
+jest.mock('expo-notifications', () => ({}));
 jest.mock('@/state/BackupStatus', () => ({
   useBackupStatus: () => ({ lastBackupAt: null, checkedAt: 1, markBackedUp: mockMarkBackedUp }),
 }));
@@ -132,5 +145,75 @@ describe('recovering saved stock', () => {
     expect(mockStock.current.deleteSavedCopies).not.toHaveBeenCalled();
     pressAlertButton('Delete the saved copies?', 'Delete');
     expect(mockStock.current.deleteSavedCopies).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('settings in backups', () => {
+  const backup = (extra: Record<string, unknown>) =>
+    JSON.stringify({ items: [{ name: 'Rice', minimumQuantity: 1, restockQuantity: 1, location: 'Pantry', storeTypes: ['Market'] }], shoppingList: [], ...extra });
+
+  async function importText(text: string) {
+    await render(<DataToolsScreen />);
+    await fireEvent.changeText(screen.getByTestId('import-json-input'), text);
+    await fireEvent.press(screen.getByTestId('import-json-button'));
+  }
+
+  it('saves your settings and weekly reminder in the backup file', async () => {
+    await render(<DataToolsScreen />);
+
+    await fireEvent.press(screen.getByTestId('export-file-button'));
+
+    await waitFor(() => expect(shareBackupFile).toHaveBeenCalled());
+    expect((shareBackupFile as jest.Mock).mock.calls[0][2]).toEqual({
+      settings: mockSettings,
+      reminder: { enabled: true, weekday: 7, hour: 10 },
+    });
+  });
+
+  const lastAlertMessage = () => jest.mocked(Alert.alert).mock.calls.at(-1)?.[1];
+
+  it("offers to use a backup's settings, and changes only what differs", async () => {
+    await importText(backup({ settings: { ...mockSettings, theme: 'dark', colorTheme: 'ocean', placeOrder: ['Kitchen'] }, reminder: { enabled: true, weekday: 2, hour: 18 } }));
+
+    expect(alerts.map((alert) => alert.title)).toEqual(['Import complete']);
+    expect(lastAlertMessage()).toMatch(
+      /different settings: theme, colours, stock check route and weekly reminder\. Use them on this phone\?$/,
+    );
+    expect(mockUpdateSettings).not.toHaveBeenCalled();
+    pressAlertButton('Import complete', "Use the backup's");
+
+    expect(mockUpdateSettings).toHaveBeenCalledWith({ theme: 'dark', colorTheme: 'ocean', placeOrder: ['Kitchen'] });
+    expect(mockSaveReminder).toHaveBeenCalledWith({ enabled: true, weekday: 2, hour: 18 });
+  });
+
+  it('leaves alone what the backup lacks or has wrong, like an older backup', async () => {
+    await importText(backup({ settings: { theme: 'neon', colorTheme: 'plum' }, reminder: { enabled: true, weekday: 9, hour: 10 } }));
+
+    expect(lastAlertMessage()).toMatch(/different settings: colours\. Use them/);
+    pressAlertButton('Import complete', "Use the backup's");
+
+    expect(mockUpdateSettings).toHaveBeenCalledWith({ colorTheme: 'plum' });
+    expect(mockSaveReminder).not.toHaveBeenCalled();
+  });
+
+  it("doesn't ask when the backup's settings are the same as this phone's", async () => {
+    await importText(backup({ settings: mockSettings, reminder: { enabled: true, weekday: 7, hour: 10 } }));
+
+    expect(alerts).toEqual([{ title: 'Import complete', buttons: undefined }]);
+  });
+
+  it('keeps your settings when you say so', async () => {
+    await importText(backup({ settings: { theme: 'dark' } }));
+
+    pressAlertButton('Import complete', 'Keep mine');
+
+    expect(mockUpdateSettings).not.toHaveBeenCalled();
+    expect(mockSaveReminder).not.toHaveBeenCalled();
+  });
+
+  it("doesn't ask about settings when the backup has none", async () => {
+    await importText(backup({}));
+
+    expect(alerts).toEqual([{ title: 'Import complete', buttons: undefined }]);
   });
 });

@@ -41,26 +41,33 @@ export function describeReminder(settings: ReminderSettings): string {
   return `Every ${day} at ${formatHour(settings.hour)}`;
 }
 
+/** A saved or backed-up reminder setting, or null when it isn't valid. */
+export function reminderFromValue(input: unknown): ReminderSettings | null {
+  if (!input || typeof input !== 'object') return null;
+  const { enabled, weekday, hour } = input as Record<string, unknown>;
+  if (
+    typeof enabled === 'boolean' &&
+    typeof weekday === 'number' &&
+    Number.isInteger(weekday) &&
+    weekday >= 1 &&
+    weekday <= 7 &&
+    typeof hour === 'number' &&
+    Number.isInteger(hour) &&
+    hour >= 0 &&
+    hour <= 23
+  ) {
+    return { enabled, weekday, hour };
+  }
+  return null;
+}
+
 /** Saved settings, or the defaults when nothing valid was saved. */
 export function readReminderSettings(saved: string | null): ReminderSettings {
   try {
-    const value = JSON.parse(saved ?? '') as Partial<ReminderSettings> | null;
-    if (
-      value &&
-      typeof value.enabled === 'boolean' &&
-      Number.isInteger(value.weekday) &&
-      Number(value.weekday) >= 1 &&
-      Number(value.weekday) <= 7 &&
-      Number.isInteger(value.hour) &&
-      Number(value.hour) >= 0 &&
-      Number(value.hour) <= 23
-    ) {
-      return { enabled: value.enabled, weekday: Number(value.weekday), hour: Number(value.hour) };
-    }
+    return reminderFromValue(JSON.parse(saved ?? '')) ?? DEFAULT_REMINDER;
   } catch {
-    // Fall through to the defaults.
+    return DEFAULT_REMINDER;
   }
-  return DEFAULT_REMINDER;
 }
 
 /**

@@ -68,10 +68,21 @@ describe('backup contents', () => {
   it('wraps the stock in the Home Stock backup format', () => {
     expect(createBackup(data, now)).toEqual({
       format: 'home-stock-backup',
-      version: 3,
+      version: 4,
       exportedAt: now.toISOString(),
       ...data,
     });
+  });
+
+  it('includes your settings and weekly reminder when given', () => {
+    const settings = {
+      backupReminderDays: 30, haptics: false, theme: 'dark', colorTheme: 'plum', placeOrder: ['Kitchen'], keepScreenOn: true,
+    } as const;
+    const reminder = { enabled: true, weekday: 7, hour: 10 };
+
+    const backup = createBackup(data, now, { settings: { ...settings, placeOrder: [...settings.placeOrder] }, reminder });
+
+    expect(backup).toMatchObject({ settings: { ...settings, placeOrder: ['Kitchen'] }, reminder });
   });
 
   it('names the file after the local date', () => {
@@ -88,6 +99,15 @@ describe('backup contents', () => {
 });
 
 describe('saving a backup file', () => {
+  it('saves the weekly reminder in the file, and no settings when given none', async () => {
+    const reminder = { enabled: false, weekday: 2, hour: 18 };
+    await shareBackupFile(data, now, { reminder });
+
+    const saved = JSON.parse(mockFiles.get('file:///cache/home-stock-backup-2026-11-16.json') ?? '{}');
+    expect(saved.reminder).toEqual(reminder);
+    expect(saved).not.toHaveProperty('settings');
+  });
+
   it('writes the backup to a dated file and opens the share sheet for it', async () => {
     await shareBackupFile(data, now);
 

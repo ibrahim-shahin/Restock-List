@@ -2,7 +2,14 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import React, { type ReactNode } from 'react';
 import { Appearance } from 'react-native';
 import { setHapticsEnabled } from '@/utils/haptics';
-import { readSettings, SettingsProvider, useSettings } from '../Settings';
+import {
+  DEFAULT_SETTINGS,
+  readSettings,
+  SettingsProvider,
+  settingsFromValue,
+  useSettings,
+  type Settings,
+} from '../Settings';
 
 const mockStorage = new Map<string, string>();
 const mockRead = { delay: null as Promise<void> | null, failures: 0 };
@@ -187,4 +194,16 @@ it("never saves over your settings when they can't be read, and tries again", as
   expect(result.current.settings).toEqual({ ...DEFAULTS, theme: 'dark', colorTheme: 'plum', haptics: false });
   await waitFor(() => expect(JSON.parse(mockStorage.get(KEY) ?? '{}').haptics).toBe(false));
   expect(JSON.parse(mockStorage.get(KEY) ?? '{}').theme).toBe('dark');
+});
+
+it('reads settings from a backup the same way', () => {
+  expect(settingsFromValue({ theme: 'dark', haptics: 'nope' })).toEqual({ ...DEFAULTS, theme: 'dark' });
+  expect(settingsFromValue(null)).toEqual(DEFAULTS);
+  expect(settingsFromValue(['dark'])).toEqual(DEFAULTS);
+});
+
+it("keeps the fallback's value for each one a backup lacks or has wrong", () => {
+  const mine: Settings = { ...DEFAULT_SETTINGS, theme: 'dark', haptics: false };
+  expect(settingsFromValue({ colorTheme: 'plum', theme: 'neon' }, mine)).toEqual({ ...mine, colorTheme: 'plum' });
+  expect(settingsFromValue(null, mine)).toEqual(mine);
 });

@@ -1,12 +1,17 @@
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import type { Settings } from '@/state/Settings';
 import type { SavedData } from '@/state/StockContext';
+import type { ReminderSettings } from '@/utils/reminders';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 // A large household inventory is well under 1 MB, so anything bigger is not a backup.
 const MAX_BACKUP_BYTES = 5 * 1024 * 1024;
 
 export type PickedBackup = { canceled: true } | { canceled: false; data: unknown };
+
+// Your settings and weekly reminder, saved with the stock so a new phone can get them back.
+export type BackupPreferences = { settings?: Settings; reminder?: ReminderSettings };
 
 export function hasStockData(data: SavedData): boolean {
   return (
@@ -17,15 +22,17 @@ export function hasStockData(data: SavedData): boolean {
   );
 }
 
-export function createBackup(data: SavedData, now = new Date()) {
+export function createBackup(data: SavedData, now = new Date(), preferences: BackupPreferences = {}) {
   return {
     format: 'home-stock-backup',
-    version: 3,
+    version: 4,
     exportedAt: now.toISOString(),
     items: data.items,
     shoppingList: data.shoppingList,
     recentLocations: data.recentLocations,
     recentStores: data.recentStores,
+    ...(preferences.settings ? { settings: preferences.settings } : {}),
+    ...(preferences.reminder ? { reminder: preferences.reminder } : {}),
   };
 }
 
@@ -46,10 +53,14 @@ export async function shareTextFile(name: string, text: string, dialogTitle: str
   });
 }
 
-export function shareBackupFile(data: SavedData, now = new Date()): Promise<void> {
+export function shareBackupFile(
+  data: SavedData,
+  now = new Date(),
+  preferences: BackupPreferences = {},
+): Promise<void> {
   return shareTextFile(
     backupFileName(now),
-    JSON.stringify(createBackup(data, now), null, 2),
+    JSON.stringify(createBackup(data, now, preferences), null, 2),
     'Save your Home Stock backup',
   );
 }

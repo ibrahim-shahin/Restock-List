@@ -14,6 +14,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useColors } from '@/hooks/useColors';
 import { useBackupStatus } from '@/state/BackupStatus';
+import { useReminder } from '@/state/Reminder';
+import { settingsFromValue, useSettings, type Settings } from '@/state/Settings';
 import { useStock } from '@/state/StockContext';
 import {
   createBackup,
@@ -22,7 +24,9 @@ import {
   pickBackupFile,
   shareBackupFile,
   shareTextFile,
+  type BackupPreferences,
 } from '@/utils/backup';
+import { reminderFromValue, type ReminderSettings } from '@/utils/reminders';
 import { router } from 'expo-router';
 
 type ImportResult = {
@@ -40,6 +44,55 @@ function importSummary(result: ImportResult): string {
     ? ` ${result.shoppingListAddedCount} buy-list ${result.shoppingListAddedCount === 1 ? 'entry was' : 'entries were'} added.`
     : '';
   return `${summary}${listSummary}${skipped} Your existing data was kept.`;
+}
+
+// How settings are named when a backup has different ones.
+const SETTING_NAMES: Partial<Record<keyof Settings, string>> = {
+  backupReminderDays: 'backup reminder',
+  haptics: 'vibration',
+  theme: 'theme',
+  colorTheme: 'colours',
+  placeOrder: 'stock check route',
+  keepScreenOn: 'keep screen on',
+};
+
+type BackupChanges = { settings: Partial<Settings>; reminder: ReminderSettings | null };
+
+function sameReminder(a: ReminderSettings, b: ReminderSettings | null): boolean {
+  return !!b && a.enabled === b.enabled && a.weekday === b.weekday && a.hour === b.hour;
+}
+
+/**
+ * What using a backup's settings and weekly reminder would change on this
+ * phone, or null when nothing would. A setting the backup lacks, or has an
+ * invalid value for, stays as it is.
+ */
+function backupChanges(
+  data: unknown,
+  current: Settings,
+  currentReminder: ReminderSettings | null,
+): BackupChanges | null {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  const record = data as Record<string, unknown>;
+  const settings = Object.fromEntries(
+    Object.entries(settingsFromValue(record.settings, current)).filter(
+      ([key, value]) => JSON.stringify(value) !== JSON.stringify(current[key as keyof Settings]),
+    ),
+  ) as Partial<Settings>;
+  const backupReminder = reminderFromValue(record.reminder);
+  const reminder = backupReminder && !sameReminder(backupReminder, currentReminder) ? backupReminder : null;
+  return Object.keys(settings).length > 0 || reminder ? { settings, reminder } : null;
+}
+
+function changesQuestion(changes: BackupChanges): string {
+  const names = Object.keys(changes.settings).map(
+    (key) => SETTING_NAMES[key as keyof Settings] ?? 'other settings',
+  );
+  if (changes.reminder) names.push('weekly reminder');
+  const unique = [...new Set(names)];
+  const list =
+    unique.length > 1 ? `${unique.slice(0, -1).join(', ')} and ${unique[unique.length - 1]}` : unique[0];
+  return `This backup has different settings: ${list}. Use them on this phone?`;
 }
 
 function importErrorMessage(error: unknown): string {
@@ -71,6 +124,9 @@ export default function DataToolsScreen() {
     deleteSavedCopies,
   } = useStock();
   const { lastBackupAt, checkedAt, markBackedUp } = useBackupStatus();
+  const { settings, updateSettings } = useSettings();
+  const { reminder, saveReminder } = useReminder();
+  const preferences: BackupPreferences = { settings, ...(reminder ? { reminder } : {}) };
   const [jsonText, setJsonText] = useState('');
   const [error, setError] = useState('');
   const [isBusy, setIsBusy] = useState(false);
@@ -92,7 +148,7 @@ export default function DataToolsScreen() {
   async function saveBackupFile() {
     setIsBusy(true);
     try {
-      await shareBackupFile(stockData);
+      await shareBackupFile(stockData, new Date(), preferences);
     } catch {
       Alert.alert('Could not save the backup', 'Please try again.');
       return;
@@ -106,7 +162,7 @@ export default function DataToolsScreen() {
     try {
       const result = await Share.share({
         title: 'Home Stock backup',
-        message: JSON.stringify(createBackup(stockData), null, 2),
+        message: JSON.stringify(createBackup(stockData, new Date(), preferences), null, 2),
       });
       if (result.action === Share.dismissedAction) return;
     } catch {
@@ -116,13 +172,48 @@ export default function DataToolsScreen() {
     confirmBackupSaved();
   }
 
+  // Shows what was imported and, if the backup's settings differ from this
+  // phone's, offers to use them.
+  function finishImport(data: unknown, result: ImportResult) {
+    const changes = backupChanges(data, settings, reminder);
+    if (!changes) {
+      Alert.alert('Import complete', importSummary(result));
+      return;
+    }
+    Alert.alert(
+      'Import complete',
+      `${importSummary(result)}\n\n${changesQuestion(changes)}`,
+      [
+        { text: 'Keep mine', style: 'cancel' },
+        {
+          text: "Use the backup's",
+          onPress: () => {
+            if (Object.keys(changes.settings).length > 0) updateSettings(changes.settings);
+            if (changes.reminder) {
+              saveReminder(changes.reminder)
+                .then((saved) => {
+                  if (!saved) {
+                    Alert.alert(
+                      'Weekly reminder not turned on',
+                      'Home Stock needs permission to send notifications. You can turn the reminder on in Settings.',
+                    );
+                  }
+                })
+                .catch(() => undefined);
+            }
+          },
+        },
+      ],
+    );
+  }
+
   async function importBackupFile() {
     setError('');
     setIsBusy(true);
     try {
       const picked = await pickBackupFile();
       if (!picked.canceled) {
-        Alert.alert('Import complete', importSummary(importBackup(picked.data)));
+        finishImport(picked.data, importBackup(picked.data));
       }
     } catch (importError) {
       setError(importErrorMessage(importError));
@@ -197,10 +288,11 @@ export default function DataToolsScreen() {
       return;
     }
     try {
-      const result = importBackup(JSON.parse(jsonText) as unknown);
+      const data = JSON.parse(jsonText) as unknown;
+      const result = importBackup(data);
       setJsonText('');
       setError('');
-      Alert.alert('Import complete', importSummary(result));
+      finishImport(data, result);
     } catch (importError) {
       setError(importErrorMessage(importError));
     }
@@ -348,7 +440,7 @@ export default function DataToolsScreen() {
             Export a full backup
           </Text>
           <Text style={[styles.cardCopy, { color: colors.mutedForeground }]}>
-            Save {items.length} {items.length === 1 ? 'item' : 'items'}, your buy list, and saved places as a file you can keep in Google Drive, Files or a chat.
+            Save {items.length} {items.length === 1 ? 'item' : 'items'}, your buy list, saved places and settings as a file you can keep in Google Drive, Files or a chat.
           </Text>
           <Pressable
             accessibilityRole="button"

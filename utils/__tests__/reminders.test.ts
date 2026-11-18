@@ -5,6 +5,7 @@ import {
   formatHour,
   isReminderTap,
   readReminderSettings,
+  reminderFromValue,
   scheduleWeeklyReminder,
   showRemindersWhileOpen,
 } from '../reminders';
@@ -96,6 +97,16 @@ describe('reminder settings', () => {
       weekday: 7,
       hour: 10,
     });
+  });
+
+  it('reads a reminder from a backup, or nothing when it is not valid', () => {
+    expect(reminderFromValue(saturdayAtTen)).toEqual(saturdayAtTen);
+    expect(reminderFromValue({ ...saturdayAtTen, extra: 1 })).toEqual(saturdayAtTen);
+    expect(reminderFromValue({ ...saturdayAtTen, hour: 24 })).toBeNull();
+    expect(reminderFromValue({ ...saturdayAtTen, weekday: '7' })).toBeNull();
+    expect(reminderFromValue({ enabled: 'yes', weekday: 7, hour: 10 })).toBeNull();
+    expect(reminderFromValue(null)).toBeNull();
+    expect(reminderFromValue('weekly')).toBeNull();
   });
 
   it('recognises a tap on the reminder', () => {

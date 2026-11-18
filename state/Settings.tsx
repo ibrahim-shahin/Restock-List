@@ -61,36 +61,43 @@ const RETRY_DELAY_MS = 1000;
 
 /** Saved settings; each missing or invalid value falls back to its default. */
 export function readSettings(saved: string | null): Settings {
-  let value: Record<string, unknown> = {};
   try {
-    const parsed: unknown = JSON.parse(saved ?? '{}');
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      value = parsed as Record<string, unknown>;
-    }
+    return settingsFromValue(JSON.parse(saved ?? '{}'));
   } catch {
-    // Use the defaults.
+    return settingsFromValue({});
   }
+}
+
+/**
+ * Settings from a saved or backed-up object. Each missing or invalid value
+ * falls back to that setting in fallback: the defaults, unless given.
+ */
+export function settingsFromValue(input: unknown, fallback: Settings = DEFAULT_SETTINGS): Settings {
+  const value: Record<string, unknown> =
+    input && typeof input === 'object' && !Array.isArray(input)
+      ? (input as Record<string, unknown>)
+      : {};
   return {
     backupReminderDays: BACKUP_REMINDER_OPTIONS.some(
       (option) => option.days === value.backupReminderDays,
     )
       ? (value.backupReminderDays as number)
-      : DEFAULT_SETTINGS.backupReminderDays,
-    haptics: typeof value.haptics === 'boolean' ? value.haptics : DEFAULT_SETTINGS.haptics,
+      : fallback.backupReminderDays,
+    haptics: typeof value.haptics === 'boolean' ? value.haptics : fallback.haptics,
     theme: THEME_OPTIONS.some((option) => option.value === value.theme)
       ? (value.theme as ThemeSetting)
-      : DEFAULT_SETTINGS.theme,
+      : fallback.theme,
     colorTheme: COLOR_THEMES.some((option) => option.key === value.colorTheme)
       ? (value.colorTheme as ColorThemeKey)
-      : DEFAULT_SETTINGS.colorTheme,
+      : fallback.colorTheme,
     placeOrder: Array.isArray(value.placeOrder)
       ? value.placeOrder
           .filter((place): place is string => typeof place === 'string' && place.trim() !== '')
           .map((place) => place.trim())
           .slice(0, MAX_ROUTE_PLACES)
-      : DEFAULT_SETTINGS.placeOrder,
+      : fallback.placeOrder,
     keepScreenOn:
-      typeof value.keepScreenOn === 'boolean' ? value.keepScreenOn : DEFAULT_SETTINGS.keepScreenOn,
+      typeof value.keepScreenOn === 'boolean' ? value.keepScreenOn : fallback.keepScreenOn,
   };
 }
 
