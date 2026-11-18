@@ -255,103 +255,116 @@ export default function StockCheckScreen() {
           </Pressable>
         </View>
       ) : currentItem ? (
-        <ScrollView
-          contentContainerStyle={[
-            styles.checkContent,
-            { paddingBottom: insets.bottom + 28 },
-          ]}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.progressHeader}>
-            <Text style={[styles.stepText, { color: colors.mutedForeground }]}>
-              ITEM {currentIndex + 1} OF {storeItems.length}
-            </Text>
-            <Text style={[styles.percentText, { color: colors.primary }]}>
-              {Math.round(progress)}%
-            </Text>
-          </View>
-          <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
-            <View
-              style={[
-                styles.progressFill,
-                { backgroundColor: colors.primary, width: `${progress}%` },
-              ]}
-            />
-          </View>
-
-          <View style={styles.questionBlock}>
-            <View style={[styles.itemIcon, { backgroundColor: colors.accent }]}>
-              <Feather name="package" size={22} color={colors.primary} />
-            </View>
-            <Text style={[styles.itemName, { color: colors.foreground }]}>
-              {currentItem.name}
-            </Text>
-            <Text style={[styles.question, { color: colors.mutedForeground }]}>
-              Do you have at least
-            </Text>
-            <View style={[styles.minimumBadge, { backgroundColor: colors.card }]}>
-              <Text style={[styles.minimumValue, { color: colors.primary }]}>
-                {currentItem.minimumQuantity}
+        <View style={styles.checkArea}>
+          <ScrollView
+            contentContainerStyle={styles.checkContent}
+            showsVerticalScrollIndicator
+            style={styles.checkScroll}
+            testID="check-scroll"
+          >
+            <View style={styles.progressHeader}>
+              <Text style={[styles.stepText, { color: colors.mutedForeground }]}>
+                ITEM {currentIndex + 1} OF {storeItems.length}
               </Text>
-              {currentItem.unit ? (
-                <Text style={[styles.minimumUnit, { color: colors.primary }]}>
-                  {currentItem.unit}
+              <Text style={[styles.percentText, { color: colors.primary }]}>
+                {Math.round(progress)}%
+              </Text>
+            </View>
+            <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { backgroundColor: colors.primary, width: `${progress}%` },
+                ]}
+              />
+            </View>
+
+            <View style={styles.questionBlock}>
+              <View style={[styles.itemIcon, { backgroundColor: colors.accent }]}>
+                <Feather name="package" size={22} color={colors.primary} />
+              </View>
+              <Text style={[styles.itemName, { color: colors.foreground }]}>
+                {currentItem.name}
+              </Text>
+              <Text style={[styles.question, { color: colors.mutedForeground }]}>
+                Do you have at least
+              </Text>
+              <View style={[styles.minimumBadge, { backgroundColor: colors.card }]}>
+                <Text style={[styles.minimumValue, { color: colors.primary }]}>
+                  {currentItem.minimumQuantity}
                 </Text>
-              ) : null}
-            </View>
-            <Text style={[styles.questionSuffix, { color: colors.mutedForeground }]}>
-              on hand?
-            </Text>
-            <View style={styles.locationLine}>
-              <Feather name="map-pin" size={13} color={colors.mutedForeground} />
-              <Text style={[styles.locationText, { color: colors.mutedForeground }]}>
-                Check {currentItem.location.toLowerCase()} · {selectedStoreType}
+                {currentItem.unit ? (
+                  <Text style={[styles.minimumUnit, { color: colors.primary }]}>
+                    {currentItem.unit}
+                  </Text>
+                ) : null}
+              </View>
+              <Text style={[styles.questionSuffix, { color: colors.mutedForeground }]}>
+                on hand?
               </Text>
+              <View style={styles.locationLine}>
+                <Feather name="map-pin" size={13} color={colors.mutedForeground} />
+                <Text style={[styles.locationText, { color: colors.mutedForeground }]}>
+                  Check {currentItem.location.toLowerCase()} · {selectedStoreType}
+                </Text>
+              </View>
             </View>
-          </View>
+          </ScrollView>
 
-          <View style={styles.answers}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => answer(true)}
-              style={({ pressed }) => [
-                styles.answerButton,
-                { backgroundColor: colors.card, borderColor: colors.border },
-                pressed && styles.pressed,
-              ]}
-              testID="stock-answer-yes"
-            >
-              <View style={[styles.answerIcon, { backgroundColor: colors.accent }]}>
-                <Feather name="check" size={18} color={colors.primary} />
-              </View>
-              <Text style={[styles.answerTitle, { color: colors.foreground }]}>
-                Yes, I have enough
-              </Text>
-              <Feather name="arrow-right" size={17} color={colors.mutedForeground} />
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => answer(false)}
-              style={({ pressed }) => [
-                styles.answerButton,
-                { backgroundColor: colors.card, borderColor: colors.border },
-                pressed && styles.pressed,
-              ]}
-              testID="stock-answer-no"
-            >
-              <View style={[styles.answerIcon, { backgroundColor: colors.secondary }]}>
-                <Feather name="plus" size={18} color={colors.primary} />
-              </View>
-              <Text style={[styles.answerTitle, { color: colors.foreground }]}>
-                No, add it to my list
-              </Text>
-              <Feather name="arrow-right" size={17} color={colors.mutedForeground} />
-            </Pressable>
-            {currentIndex > 0 ? (
+          {/* Pinned under the question, so nothing above can move them. */}
+          <View style={[styles.answers, { paddingBottom: insets.bottom + 16 }]}>
               <Pressable
                 accessibilityRole="button"
+                onPress={() => answer(true)}
+                style={({ pressed }) => [
+                  styles.answerButton,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                  pressed && styles.pressed,
+                ]}
+                testID="stock-answer-yes"
+              >
+                <View style={[styles.answerIcon, { backgroundColor: colors.accent }]}>
+                  <Feather name="check" size={18} color={colors.primary} />
+                </View>
+                {/* Repeats the number, so it shows even when the question has to scroll. */}
+                <Text style={[styles.answerTitle, { color: colors.foreground }]}>
+                  {currentItem.minimumQuantity > 0
+                    ? `Yes, I have at least ${currentItem.minimumQuantity}${currentItem.unit ? ` ${currentItem.unit}` : ''}`
+                    : 'Yes, I have enough'}
+                </Text>
+                <Feather name="arrow-right" size={17} color={colors.mutedForeground} />
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => answer(false)}
+                style={({ pressed }) => [
+                  styles.answerButton,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                  pressed && styles.pressed,
+                ]}
+                testID="stock-answer-no"
+              >
+                <View style={[styles.answerIcon, { backgroundColor: colors.secondary }]}>
+                  <Feather name="plus" size={18} color={colors.primary} />
+                </View>
+                <Text style={[styles.answerTitle, { color: colors.foreground }]}>
+                  No, add it to my list
+                </Text>
+                <Feather name="arrow-right" size={17} color={colors.mutedForeground} />
+              </Pressable>
+              {/* Always takes up its space, so Yes and No stay put when it appears. */}
+              <Pressable
+                accessibilityElementsHidden={currentIndex === 0}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: currentIndex === 0 }}
+                disabled={currentIndex === 0}
+                importantForAccessibility={currentIndex === 0 ? 'no-hide-descendants' : 'auto'}
                 onPress={goBackOneItem}
-                style={({ pressed }) => [styles.backStepButton, pressed && styles.pressed]}
+                style={({ pressed }) => [
+                  styles.backStepButton,
+                  currentIndex === 0 && styles.hidden,
+                  pressed && styles.pressed,
+                ]}
                 testID="previous-item-button"
               >
                 <Feather name="corner-up-left" size={14} color={colors.mutedForeground} />
@@ -359,9 +372,8 @@ export default function StockCheckScreen() {
                   Previous item
                 </Text>
               </Pressable>
-            ) : null}
-          </View>
-        </ScrollView>
+            </View>
+        </View>
       ) : null}
     </View>
   );
@@ -380,13 +392,15 @@ const styles = StyleSheet.create({
   storeOptionCopy: { flex: 1, gap: 4 },
   storeOptionTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 14 },
   storeOptionCount: { fontFamily: 'Inter_400Regular', fontSize: 10 },
-  checkContent: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 20, justifyContent: 'space-between' },
+  checkArea: { flex: 1 },
+  checkScroll: { flex: 1 },
+  checkContent: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 20 },
   progressHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 },
   stepText: { fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1.2 },
   percentText: { fontFamily: 'Inter_700Bold', fontSize: 11 },
   progressTrack: { height: 4, borderRadius: 4, overflow: 'hidden' },
   progressFill: { height: 4, borderRadius: 4 },
-  questionBlock: { alignItems: 'center', paddingTop: 44, paddingBottom: 38 },
+  questionBlock: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 44, paddingBottom: 24 },
   itemIcon: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 19 },
   itemName: { fontFamily: 'Inter_700Bold', fontSize: 28, textAlign: 'center', letterSpacing: -0.5, marginBottom: 12 },
   question: { fontFamily: 'Inter_400Regular', fontSize: 14 },
@@ -396,7 +410,7 @@ const styles = StyleSheet.create({
   questionSuffix: { fontFamily: 'Inter_400Regular', fontSize: 14 },
   locationLine: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 18 },
   locationText: { fontFamily: 'Inter_500Medium', fontSize: 11 },
-  answers: { gap: 11, paddingBottom: 8 },
+  answers: { gap: 11, paddingHorizontal: 24, paddingTop: 10 },
   answerButton: { minHeight: 68, borderWidth: 1, borderRadius: 18, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 12 },
   answerIcon: { height: 40, width: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   answerTitle: { flex: 1, fontFamily: 'Inter_600SemiBold', fontSize: 13 },
@@ -410,5 +424,6 @@ const styles = StyleSheet.create({
   anotherStoreText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   backStepButton: { minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 6 },
   backStepText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  hidden: { opacity: 0 },
   pressed: { opacity: 0.7, transform: [{ scale: 0.99 }] },
 });

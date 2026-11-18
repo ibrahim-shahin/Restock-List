@@ -1,6 +1,6 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import React from 'react';
-import { BackHandler } from 'react-native';
+import { BackHandler, StyleSheet } from 'react-native';
 import StockCheckScreen from '@/app/stock-check';
 import type { StockItem } from '@/state/StockContext';
 
@@ -34,6 +34,31 @@ async function startCheck() {
 beforeEach(() => {
   jest.clearAllMocks();
   mockFocus.current = true;
+});
+
+it('keeps the Previous item space on the first item, so Yes and No stay put', async () => {
+  await startCheck();
+
+  // Invisible and hidden from screen readers, but still taking up its space.
+  expect(screen.queryByTestId('previous-item-button')).toBeNull();
+  const hiddenButton = screen.getByTestId('previous-item-button', { includeHiddenElements: true });
+  expect(StyleSheet.flatten(hiddenButton.props.style).opacity).toBe(0);
+  expect(hiddenButton.props.accessibilityState).toEqual({ disabled: true });
+  await fireEvent.press(hiddenButton);
+  expect(screen.getByText('Milk')).toBeTruthy();
+
+  await fireEvent.press(screen.getByTestId('stock-answer-yes'));
+  const shownButton = screen.getByTestId('previous-item-button');
+  expect(StyleSheet.flatten(shownButton.props.style).opacity).toBeUndefined();
+  expect(shownButton.props.accessibilityState).toEqual({ disabled: false });
+
+  // Yes and No sit below the scrolling question, so a longer question can't push them.
+  const question = within(screen.getByTestId('check-scroll'));
+  expect(question.getByText('Bread')).toBeTruthy();
+  // The pinned Yes button repeats the minimum, so it's visible even if the question scrolls.
+  expect(screen.getByTestId('stock-answer-yes')).toHaveTextContent(/Yes, I have at least 1(\D|$)/);
+  expect(question.queryByTestId('stock-answer-yes')).toBeNull();
+  expect(question.queryByTestId('stock-answer-no')).toBeNull();
 });
 
 it('goes back to the previous item and lets you change the answer', async () => {
