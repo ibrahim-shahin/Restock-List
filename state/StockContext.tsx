@@ -24,6 +24,8 @@ export type StockItem = {
   createdAt: number;
   // Chosen in the item form; without it, one is picked from the name.
   emoji?: string;
+  // Brand, size or flavour to look for, shown on the buy list.
+  note?: string;
 };
 
 export type StockItemDraft = Omit<StockItem, 'id' | 'createdAt'>;
@@ -41,6 +43,7 @@ export type OneTimeItemDraft = {
   quantity: number;
   unit: string;
   store: string;
+  note?: string;
 };
 
 export type SavedData = {
@@ -210,6 +213,14 @@ function readEmoji(value: unknown): string | undefined {
   return EMOJI_CHOICES.includes(emoji) ? emoji : undefined;
 }
 
+export const MAX_NOTE_LENGTH = 200;
+
+function readNote(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const note = value.trim().slice(0, MAX_NOTE_LENGTH);
+  return note || undefined;
+}
+
 function normalizeStockItem(
   value: unknown,
   imported = false,
@@ -251,6 +262,7 @@ function normalizeStockItem(
           ? Date.now()
           : legacyCreatedAt,
     ...(readEmoji(record.emoji) ? { emoji: readEmoji(record.emoji) } : {}),
+    ...(readNote(record.note) ? { note: readNote(record.note) } : {}),
   };
 }
 
@@ -292,6 +304,7 @@ function normalizeOneTimeEntry(value: unknown): BuyListItem {
     shoppingStoreType: store,
     purchased: record.purchased === true,
     oneTime: true,
+    ...(readNote(record.note) ? { note: readNote(record.note) } : {}),
   };
 }
 
@@ -596,11 +609,13 @@ export function StockProvider({ children }: { children: ReactNode }) {
         matchSpelling(store, otherItems.flatMap((item) => item.storeTypes)),
       ),
     );
-    const { emoji: draftEmoji, ...details } = draft;
+    const { emoji: draftEmoji, note: draftNote, ...details } = draft;
     const emoji = readEmoji(draftEmoji);
+    const note = readNote(draftNote);
     const savedItem: StockItem = {
       ...details,
       ...(emoji ? { emoji } : {}),
+      ...(note ? { note } : {}),
       name,
       location,
       storeTypes,
@@ -727,6 +742,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
         shoppingStoreType: store,
         purchased: false,
         oneTime: true,
+        ...(readNote(draft.note) ? { note: readNote(draft.note) } : {}),
       },
     ]);
     setRecentStores((recent) => rememberPlace(store, recent));

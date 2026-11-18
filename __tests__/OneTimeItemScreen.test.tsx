@@ -49,6 +49,7 @@ it('adds the item for the store it was opened from, then closes', async () => {
   await fireEvent.changeText(screen.getByTestId('one-time-name-input'), 'Birthday candles');
   await fireEvent.changeText(screen.getByTestId('one-time-quantity-input'), '3');
   await fireEvent.changeText(screen.getByTestId('one-time-unit-input'), 'packs');
+  await fireEvent.changeText(screen.getByTestId('one-time-note-input'), 'Number shapes');
   await fireEvent.press(screen.getByTestId('save-one-time-item'));
 
   expect(mockAddOneTimeItem).toHaveBeenCalledWith({
@@ -56,6 +57,7 @@ it('adds the item for the store it was opened from, then closes', async () => {
     quantity: 3,
     unit: 'packs',
     store: 'Bakery',
+    note: 'Number shapes',
   });
   expect(router.back).toHaveBeenCalled();
 });

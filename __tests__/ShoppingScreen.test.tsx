@@ -10,6 +10,7 @@ const mockTogglePurchased = jest.fn();
 const milk: BuyListItem = {
   id: 'milk', name: 'Milk', minimumQuantity: 1, restockQuantity: 2, unit: 'L', location: 'Fridge',
   storeTypes: ['Supermarket'], createdAt: 1, entryId: '["milk","Supermarket"]', shoppingStoreType: 'Supermarket', purchased: false,
+  note: 'Full fat',
 };
 const candles: BuyListItem = {
   id: 'once-1', name: 'Birthday candles', minimumQuantity: 0, restockQuantity: 2, unit: 'packs', location: '',
@@ -66,7 +67,25 @@ it('shares one-time items without a storage place', async () => {
   await fireEvent.press(screen.getByTestId('share-buy-list-button'));
 
   const message = share.mock.calls[0][0] as { message: string };
-  expect(message.message).toContain('• Milk — 2 L (Fridge)');
+  expect(message.message).toContain('• Milk — 2 L (Fridge) — Full fat');
   expect(message.message).toContain('• Birthday candles — 2 packs');
   expect(message.message).not.toContain('Birthday candles — 2 packs (');
+});
+
+it('shows notes under the item name', async () => {
+  await render(<ShoppingListScreen />);
+
+  expect(screen.getByTestId('buy-note-milk')).toHaveTextContent('Full fat');
+  expect(screen.queryByTestId('buy-note-once-1')).toBeNull();
+});
+
+it('reads the amount, note and place to screen readers', async () => {
+  await render(<ShoppingListScreen />);
+
+  expect(screen.getByTestId('buy-item-milk').props.accessibilityLabel).toBe(
+    'Mark purchased: Milk, 2 L, Full fat, Fridge',
+  );
+  expect(screen.getByTestId('buy-item-once-1').props.accessibilityLabel).toBe(
+    'Mark purchased: Birthday candles, 2 packs, just this once',
+  );
 });

@@ -68,6 +68,16 @@ it('saves the icon you choose', async () => {
   expect(mockSaveItem).toHaveBeenCalledWith(expect.objectContaining({ name: 'Milk', emoji: '🧃' }), undefined);
 });
 
+it('saves a note with the item', async () => {
+  await render(<ItemFormScreen />);
+  await fillInMilk();
+
+  await fireEvent.changeText(screen.getByTestId('item-note-input'), '  Full fat, 2 L  ');
+  await fireEvent.press(screen.getByTestId('save-item-button'));
+
+  expect(mockSaveItem).toHaveBeenCalledWith(expect.objectContaining({ note: 'Full fat, 2 L' }), undefined);
+});
+
 it('goes back to picking from the name', async () => {
   await render(<ItemFormScreen />);
   await fillInMilk();

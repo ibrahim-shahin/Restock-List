@@ -15,7 +15,7 @@ import { useColors } from '@/hooks/useColors';
 import { EMOJI_CHOICES, suggestEmoji } from '@/utils/emoji';
 import { successFeedback } from '@/utils/haptics';
 import { cleanQuantityInput } from '@/utils/quantity';
-import { useStock, type StockItemDraft } from '@/state/StockContext';
+import { MAX_NOTE_LENGTH, useStock, type StockItemDraft } from '@/state/StockContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function ChoiceChips({
@@ -83,6 +83,7 @@ export default function ItemFormScreen() {
     existingItem?.restockQuantity.toString() ?? '',
   );
   const [unit, setUnit] = useState(existingItem?.unit ?? '');
+  const [note, setNote] = useState(existingItem?.note ?? '');
   const [location, setLocation] = useState(existingItem?.location ?? '');
   const [storeTypes, setStoreTypes] = useState<string[]>(
     existingItem?.storeTypes ?? [],
@@ -101,6 +102,7 @@ export default function ItemFormScreen() {
     setMinimumQuantity(existingItem.minimumQuantity.toString());
     setRestockQuantity(existingItem.restockQuantity.toString());
     setUnit(existingItem.unit);
+    setNote(existingItem.note ?? '');
     setLocation(existingItem.location);
     setStoreTypes(existingItem.storeTypes);
     setEmoji(existingItem.emoji ?? '');
@@ -154,6 +156,7 @@ export default function ItemFormScreen() {
       location: cleanLocation,
       storeTypes: cleanStores,
       ...(emoji ? { emoji } : {}),
+      ...(note.trim() ? { note: note.trim() } : {}),
     };
     const savedId = saveItem(draft, itemId);
     if (!savedId) {
@@ -344,6 +347,24 @@ export default function ItemFormScreen() {
             testID="item-unit-input"
             value={unit}
           />
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <Text style={[styles.label, { color: colors.foreground }]}>NOTE (OPTIONAL)</Text>
+          <TextInput
+            accessibilityLabel="Note"
+            autoCapitalize="sentences"
+            maxLength={MAX_NOTE_LENGTH}
+            onChangeText={setNote}
+            placeholder="e.g. Brand, size or flavour to get"
+            placeholderTextColor={colors.mutedForeground}
+            style={fieldStyle}
+            testID="item-note-input"
+            value={note}
+          />
+          <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>
+            Shown on your buy list, so whoever shops gets the right one.
+          </Text>
         </View>
 
         <View style={styles.fieldGroup}>

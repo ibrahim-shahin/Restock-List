@@ -25,12 +25,12 @@ export function normalizeForSearch(text: string): string {
     .trim();
 }
 
-/** True when every word of the query appears in the item's name, place, unit or stores. */
+/** True when every word of the query appears in the item's name, place, unit, stores or note. */
 export function matchesSearch(item: StockItem, query: string): boolean {
   const words = normalizeForSearch(query).split(/\s+/).filter(Boolean);
   if (words.length === 0) return true;
   const text = normalizeForSearch(
-    [item.name, item.location, item.unit, ...item.storeTypes].join(' '),
+    [item.name, item.location, item.unit, ...item.storeTypes, item.note ?? ''].join(' '),
   );
   return words.every((word) => text.includes(word));
 }

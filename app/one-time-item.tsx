@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useColors } from '@/hooks/useColors';
-import { useStock } from '@/state/StockContext';
+import { MAX_NOTE_LENGTH, useStock } from '@/state/StockContext';
 import { cleanQuantityInput } from '@/utils/quantity';
 
 function uniqueStores(stores: string[]): string[] {
@@ -38,6 +38,7 @@ export default function OneTimeItemScreen() {
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [unit, setUnit] = useState('');
+  const [note, setNote] = useState('');
   // A link can repeat a parameter; use its first value.
   const storeParam = Array.isArray(params.store) ? params.store[0] : params.store;
   // The tapped store and what's typed in the field; typing wins.
@@ -54,6 +55,7 @@ export default function OneTimeItemScreen() {
       quantity: Number(quantity || '1'),
       unit,
       store,
+      note,
     });
     if (message) {
       setError(message);
@@ -145,6 +147,21 @@ export default function OneTimeItemScreen() {
               value={unit}
             />
           </View>
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <Text style={[styles.label, { color: colors.foreground }]}>NOTE (OPTIONAL)</Text>
+          <TextInput
+            accessibilityLabel="Note"
+            autoCapitalize="sentences"
+            maxLength={MAX_NOTE_LENGTH}
+            onChangeText={setNote}
+            placeholder="e.g. Blue ones, number 3"
+            placeholderTextColor={colors.mutedForeground}
+            style={fieldStyle}
+            testID="one-time-note-input"
+            value={note}
+          />
         </View>
 
         <View style={styles.fieldGroup}>

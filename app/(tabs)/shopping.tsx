@@ -38,7 +38,14 @@ function BuyRow({
       <Pressable
         accessibilityRole="checkbox"
         accessibilityState={{ checked: item.purchased }}
-        accessibilityLabel={`${item.purchased ? 'Mark not purchased' : 'Mark purchased'}: ${item.name}`}
+        accessibilityLabel={[
+          `${item.purchased ? 'Mark not purchased' : 'Mark purchased'}: ${item.name}`,
+          quantityLabel(item),
+          item.note,
+          item.oneTime ? 'just this once' : item.location,
+        ]
+          .filter(Boolean)
+          .join(', ')}
         onPress={onToggle}
         style={({ pressed }) => [styles.buyToggle, pressed && styles.pressed]}
         testID={`buy-item-${item.id}`}
@@ -67,6 +74,15 @@ function BuyRow({
           >
             {item.name}
           </Text>
+          {item.note ? (
+            <Text
+              numberOfLines={2}
+              style={[styles.buyNote, { color: colors.foreground }]}
+              testID={`buy-note-${item.id}`}
+            >
+              {item.note}
+            </Text>
+          ) : null}
           {item.oneTime ? (
             <View style={styles.oneTimeLine}>
               <Feather name="zap" size={10} color={colors.primary} />
@@ -118,7 +134,7 @@ export default function ShoppingListScreen() {
           .filter((item) => item.shoppingStoreType === store)
           .map(
             (item) =>
-              `${item.purchased ? '✓' : '•'} ${item.name} — ${quantityLabel(item)}${item.oneTime ? '' : ` (${item.location})`}`,
+              `${item.purchased ? '✓' : '•'} ${item.name} — ${quantityLabel(item)}${item.oneTime ? '' : ` (${item.location})`}${item.note ? ` — ${item.note}` : ''}`,
           ),
         '',
       ]),
@@ -402,6 +418,7 @@ const styles = StyleSheet.create({
   buyDetails: { flex: 1, gap: 4 },
   buyName: { fontFamily: 'Inter_600SemiBold', fontSize: 13 },
   buyLocation: { fontFamily: 'Inter_400Regular', fontSize: 10 },
+  buyNote: { fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 15, opacity: 0.8 },
   strikethrough: { textDecorationLine: 'line-through' },
   quantityPill: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 11, maxWidth: 118 },
   quantityText: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },

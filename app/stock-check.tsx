@@ -319,6 +319,15 @@ export default function StockCheckScreen() {
               <Text style={[styles.itemName, { color: colors.foreground }]}>
                 {currentItem.name}
               </Text>
+              {currentItem.note ? (
+                <Text
+                  numberOfLines={2}
+                  style={[styles.itemNote, { color: colors.mutedForeground }]}
+                  testID="check-item-note"
+                >
+                  {currentItem.note}
+                </Text>
+              ) : null}
               <Text style={[styles.question, { color: colors.mutedForeground }]}>
                 Do you have at least
               </Text>
@@ -442,6 +451,7 @@ const styles = StyleSheet.create({
   itemIcon: { width: 64, height: 64, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginBottom: 19 },
   itemEmoji: { fontSize: 32 },
   itemName: { fontFamily: 'Inter_700Bold', fontSize: 28, textAlign: 'center', letterSpacing: -0.5, marginBottom: 12 },
+  itemNote: { fontFamily: 'Inter_500Medium', fontSize: 12, lineHeight: 17, textAlign: 'center', marginTop: -6, marginBottom: 12, maxWidth: 300 },
   question: { fontFamily: 'Inter_400Regular', fontSize: 14 },
   minimumBadge: { flexDirection: 'row', alignItems: 'baseline', gap: 6, borderRadius: 18, paddingHorizontal: 18, paddingVertical: 10, marginTop: 11, marginBottom: 9 },
   minimumValue: { fontFamily: 'Inter_700Bold', fontSize: 28 },

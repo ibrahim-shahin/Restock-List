@@ -874,3 +874,46 @@ describe('item emoji', () => {
     expect(result.current.items.map((item) => item.emoji)).toEqual([undefined, undefined, undefined, '🧃']);
   });
 });
+
+describe('item notes', () => {
+  it('saves a trimmed note and shows it on the buy list, also after an edit', async () => {
+    const { result } = await renderStock();
+    await act(() => {
+      result.current.saveItem({ ...milk, note: '  Full fat  ' });
+    });
+    await act(() => {
+      result.current.createBuyList(['wholemilk'], 'Supermarket');
+    });
+    expect(result.current.shoppingList[0].note).toBe('Full fat');
+
+    await act(() => {
+      result.current.saveItem({ ...milk, note: 'Lactose free' }, 'wholemilk');
+    });
+
+    expect(result.current.items[0].note).toBe('Lactose free');
+    expect(result.current.shoppingList[0].note).toBe('Lactose free');
+    await waitFor(() => expect(savedSnapshot().items[0].note).toBe('Lactose free'));
+  });
+
+  it('drops an empty note and caps long ones', async () => {
+    const { result } = await renderStock();
+    await act(() => {
+      result.current.saveItem({ ...milk, note: '   ' });
+    });
+    await act(() => {
+      result.current.saveItem({ ...bread, note: 'x'.repeat(300) });
+    });
+
+    expect(result.current.items[0]).not.toHaveProperty('note');
+    expect(result.current.items[1].note).toHaveLength(200);
+  });
+
+  it('keeps the note of a one-time item', async () => {
+    const { result } = await renderStock();
+    await act(() => {
+      result.current.addOneTimeItem({ name: 'Candles', quantity: 1, unit: '', store: 'Supermarket', note: ' Number 7 ' });
+    });
+
+    expect(result.current.shoppingList[0].note).toBe('Number 7');
+  });
+});

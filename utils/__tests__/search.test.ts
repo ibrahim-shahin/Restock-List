@@ -47,6 +47,10 @@ describe('matchesSearch', () => {
     expect(matchesSearch(milk, 'rice')).toBe(false);
   });
 
+  it('matches the note too', () => {
+    expect(matchesSearch({ ...milk, note: 'Almarai full fat' }, 'almarai')).toBe(true);
+  });
+
   it('needs every word to match, in any order', () => {
     expect(matchesSearch(milk, 'fridge whole')).toBe(true);
     expect(matchesSearch(milk, 'fridge rice')).toBe(false);
