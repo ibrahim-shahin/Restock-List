@@ -3,6 +3,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 import type { StockItem } from '@/state/StockContext';
+import { itemEmoji } from '@/utils/emoji';
 
 type Props = {
   item: StockItem;
@@ -25,7 +26,7 @@ export function StockItemCard({ item, onEdit }: Props) {
       testID={`stock-item-${item.id}`}
     >
       <View style={[styles.icon, { backgroundColor: colors.accent }]}>
-        <Feather name="package" size={19} color={colors.primary} />
+        <Text style={styles.emoji}>{itemEmoji(item)}</Text>
       </View>
       <View style={styles.details}>
         <Text style={[styles.name, { color: colors.foreground }]} numberOfLines={1}>
@@ -80,6 +81,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  emoji: { fontSize: 21 },
   details: { flex: 1, gap: 6 },
   name: { fontFamily: 'Inter_600SemiBold', fontSize: 15 },
   metaLine: { flexDirection: 'row', alignItems: 'center', gap: 5 },

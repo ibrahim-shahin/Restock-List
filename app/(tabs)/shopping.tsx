@@ -16,6 +16,7 @@ import { MenuButton } from '@/components/SideMenu';
 import { useColors } from '@/hooks/useColors';
 import { useStock } from '@/state/StockContext';
 import type { BuyListItem } from '@/state/StockContext';
+import { itemEmoji } from '@/utils/emoji';
 
 function quantityLabel(item: BuyListItem): string {
   return `${item.restockQuantity} ${item.unit || (item.restockQuantity === 1 ? 'unit' : 'units')}`;
@@ -55,6 +56,7 @@ function BuyRow({
             <Feather name="check" size={13} color={colors.primaryForeground} />
           ) : null}
         </View>
+        <Text style={[styles.buyEmoji, item.purchased && styles.faded]}>{itemEmoji(item)}</Text>
         <View style={styles.buyDetails}>
           <Text
             style={[
@@ -395,6 +397,8 @@ const styles = StyleSheet.create({
   buyRow: { minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   buyToggle: { flex: 1, minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: 11 },
   checkbox: { height: 22, width: 22, borderRadius: 8, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  buyEmoji: { fontSize: 20 },
+  faded: { opacity: 0.45 },
   buyDetails: { flex: 1, gap: 4 },
   buyName: { fontFamily: 'Inter_600SemiBold', fontSize: 13 },
   buyLocation: { fontFamily: 'Inter_400Regular', fontSize: 10 },

@@ -1,3 +1,4 @@
+import { EMOJI_CHOICES } from '@/utils/emoji';
 import { successFeedback, tapFeedback, warningFeedback } from '@/utils/haptics';
 import { getLocalItem, setLocalItem } from './localStore';
 import React, {
@@ -21,6 +22,8 @@ export type StockItem = {
   location: string;
   storeTypes: string[];
   createdAt: number;
+  // Chosen in the item form; without it, one is picked from the name.
+  emoji?: string;
 };
 
 export type StockItemDraft = Omit<StockItem, 'id' | 'createdAt'>;
@@ -200,6 +203,13 @@ function readStoreTypes(record: Record<string, unknown>): string[] {
   return uniqueNames(values);
 }
 
+// Only the emoji the item form offers, so a stray word can't become an icon.
+function readEmoji(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const emoji = value.trim();
+  return EMOJI_CHOICES.includes(emoji) ? emoji : undefined;
+}
+
 function normalizeStockItem(
   value: unknown,
   imported = false,
@@ -240,6 +250,7 @@ function normalizeStockItem(
         : imported
           ? Date.now()
           : legacyCreatedAt,
+    ...(readEmoji(record.emoji) ? { emoji: readEmoji(record.emoji) } : {}),
   };
 }
 
@@ -585,8 +596,11 @@ export function StockProvider({ children }: { children: ReactNode }) {
         matchSpelling(store, otherItems.flatMap((item) => item.storeTypes)),
       ),
     );
+    const { emoji: draftEmoji, ...details } = draft;
+    const emoji = readEmoji(draftEmoji);
     const savedItem: StockItem = {
-      ...draft,
+      ...details,
+      ...(emoji ? { emoji } : {}),
       name,
       location,
       storeTypes,

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useColors } from '@/hooks/useColors';
+import { EMOJI_CHOICES, suggestEmoji } from '@/utils/emoji';
 import { successFeedback } from '@/utils/haptics';
 import { cleanQuantityInput } from '@/utils/quantity';
 import { useStock, type StockItemDraft } from '@/state/StockContext';
@@ -87,6 +88,10 @@ export default function ItemFormScreen() {
     existingItem?.storeTypes ?? [],
   );
   const [storeInput, setStoreInput] = useState('');
+  // Empty means "pick one from the name".
+  const [emoji, setEmoji] = useState(existingItem?.emoji ?? '');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const shownEmoji = emoji || suggestEmoji(name);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -98,6 +103,7 @@ export default function ItemFormScreen() {
     setUnit(existingItem.unit);
     setLocation(existingItem.location);
     setStoreTypes(existingItem.storeTypes);
+    setEmoji(existingItem.emoji ?? '');
   }, [existingItem]);
 
   function addStore(value = storeInput) {
@@ -147,6 +153,7 @@ export default function ItemFormScreen() {
       unit: unit.trim(),
       location: cleanLocation,
       storeTypes: cleanStores,
+      ...(emoji ? { emoji } : {}),
     };
     const savedId = saveItem(draft, itemId);
     if (!savedId) {
@@ -232,6 +239,69 @@ export default function ItemFormScreen() {
             testID="item-name-input"
             value={name}
           />
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <Text style={[styles.label, { color: colors.foreground }]}>ICON</Text>
+          <View style={styles.emojiRow}>
+            <Pressable
+              accessibilityLabel={`Icon ${shownEmoji}. Choose another`}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showEmojiPicker }}
+              onPress={() => setShowEmojiPicker((current) => !current)}
+              style={({ pressed }) => [
+                styles.emojiPreview,
+                { backgroundColor: colors.accent, borderColor: showEmojiPicker ? colors.primary : colors.accent },
+                pressed && styles.pressed,
+              ]}
+              testID="item-emoji-button"
+            >
+              <Text style={styles.emojiPreviewText}>{shownEmoji}</Text>
+            </Pressable>
+            <View style={styles.emojiCopy}>
+              <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>
+                {emoji ? 'Your choice. Tap to change it.' : 'Picked from the name. Tap to choose your own.'}
+              </Text>
+              {emoji ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setEmoji('')}
+                  style={styles.emojiAuto}
+                  testID="item-emoji-auto"
+                >
+                  <Text style={[styles.emojiAutoText, { color: colors.primary }]}>
+                    Pick from the name instead
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+          {showEmojiPicker ? (
+            <View style={[styles.emojiGrid, { backgroundColor: colors.card }]} testID="item-emoji-picker">
+              {EMOJI_CHOICES.map((choice) => {
+                const selected = choice === shownEmoji;
+                return (
+                  <Pressable
+                    key={choice}
+                    accessibilityLabel={`Use ${choice}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() => {
+                      setEmoji(choice);
+                      setShowEmojiPicker(false);
+                    }}
+                    style={[
+                      styles.emojiChoice,
+                      selected && { backgroundColor: colors.accent },
+                    ]}
+                    testID={`emoji-choice-${choice}`}
+                  >
+                    <Text style={styles.emojiChoiceText}>{choice}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.quantityRow}>
@@ -435,6 +505,15 @@ const styles = StyleSheet.create({
   helperLabel: { fontFamily: 'Inter_700Bold', fontSize: 8, letterSpacing: 1 },
   fieldHint: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },
   input: { minHeight: 49, borderWidth: 1, borderRadius: 14, paddingHorizontal: 14, fontFamily: 'Inter_500Medium', fontSize: 14 },
+  emojiRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  emojiPreview: { height: 56, width: 56, borderRadius: 18, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  emojiPreviewText: { fontSize: 28 },
+  emojiCopy: { flex: 1, gap: 4 },
+  emojiAuto: { alignSelf: 'flex-start', paddingVertical: 2 },
+  emojiAutoText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 8, borderRadius: 16 },
+  emojiChoice: { height: 44, width: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  emojiChoiceText: { fontSize: 23 },
   quantityRow: { flexDirection: 'row', gap: 12 },
   quantityField: { flex: 1 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 1 },

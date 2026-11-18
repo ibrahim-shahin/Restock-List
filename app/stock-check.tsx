@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useSettings } from '@/state/Settings';
 import { useStock } from '@/state/StockContext';
+import { itemEmoji } from '@/utils/emoji';
 import { tapFeedback } from '@/utils/haptics';
 import {
   nextAnswers,
@@ -308,8 +309,12 @@ export default function StockCheckScreen() {
                   </Text>
                 </View>
               ) : null}
-              <View style={[styles.itemIcon, { backgroundColor: colors.accent }]}>
-                <Feather name="package" size={22} color={colors.primary} />
+              <View
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                style={[styles.itemIcon, { backgroundColor: colors.accent }]}
+              >
+                <Text style={styles.itemEmoji}>{itemEmoji(currentItem)}</Text>
               </View>
               <Text style={[styles.itemName, { color: colors.foreground }]}>
                 {currentItem.name}
@@ -434,7 +439,8 @@ const styles = StyleSheet.create({
   placePill: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '90%', borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 7, marginBottom: 18 },
   placeName: { fontFamily: 'Inter_700Bold', fontSize: 12, flexShrink: 1 },
   placeCount: { fontFamily: 'Inter_500Medium', fontSize: 11 },
-  itemIcon: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 19 },
+  itemIcon: { width: 64, height: 64, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginBottom: 19 },
+  itemEmoji: { fontSize: 32 },
   itemName: { fontFamily: 'Inter_700Bold', fontSize: 28, textAlign: 'center', letterSpacing: -0.5, marginBottom: 12 },
   question: { fontFamily: 'Inter_400Regular', fontSize: 14 },
   minimumBadge: { flexDirection: 'row', alignItems: 'baseline', gap: 6, borderRadius: 18, paddingHorizontal: 18, paddingVertical: 10, marginTop: 11, marginBottom: 9 },

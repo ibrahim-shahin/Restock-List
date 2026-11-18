@@ -829,3 +829,48 @@ describe('one-time items', () => {
     ]);
   });
 });
+
+describe('item emoji', () => {
+  it('saves a chosen emoji with the item and keeps it after a restart', async () => {
+    const first = await renderStock();
+    await act(() => {
+      first.result.current.saveItem({ ...milk, emoji: ' 🧃 ' });
+    });
+    expect(first.result.current.items[0].emoji).toBe('🧃');
+    await waitFor(() => expect(savedSnapshot().items[0].emoji).toBe('🧃'));
+    await first.unmount();
+
+    const second = await renderStock();
+    expect(second.result.current.items[0].emoji).toBe('🧃');
+  });
+
+  it('leaves the emoji out when none was chosen, so it is picked from the name', async () => {
+    const { result } = await renderStock();
+    await act(() => {
+      result.current.saveItem({ ...milk, emoji: '' });
+    });
+
+    expect(result.current.items[0]).not.toHaveProperty('emoji');
+  });
+
+  it('ignores an emoji that is not one', async () => {
+    mockStorage.set(
+      STORAGE_KEY,
+      JSON.stringify({
+        items: [
+          { name: 'Rice', minimumQuantity: 1, restockQuantity: 1, unit: '', location: 'Pantry', storeTypes: ['Market'], createdAt: 1, emoji: 'x'.repeat(40) },
+          { name: 'Tea', minimumQuantity: 1, restockQuantity: 1, unit: '', location: 'Pantry', storeTypes: ['Market'], createdAt: 2, emoji: 7 },
+          { name: 'Salt', minimumQuantity: 1, restockQuantity: 1, unit: '', location: 'Pantry', storeTypes: ['Market'], createdAt: 3, emoji: 'ab' },
+          { name: 'Milk', minimumQuantity: 1, restockQuantity: 1, unit: '', location: 'Fridge', storeTypes: ['Market'], createdAt: 4, emoji: '🧃' },
+        ],
+        shoppingList: [],
+        recentLocations: [],
+        recentStores: [],
+      }),
+    );
+
+    const { result } = await renderStock();
+
+    expect(result.current.items.map((item) => item.emoji)).toEqual([undefined, undefined, undefined, '🧃']);
+  });
+});
