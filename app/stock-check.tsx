@@ -14,7 +14,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useStock } from '@/state/StockContext';
-import { nextAnswers, previousAnswers, shortItemIds } from '@/utils/stockCheck';
+import {
+  nextAnswers,
+  orderByPlace,
+  placeProgress,
+  previousAnswers,
+  shortItemIds,
+} from '@/utils/stockCheck';
 
 export default function StockCheckScreen() {
   const colors = useColors();
@@ -24,13 +30,15 @@ export default function StockCheckScreen() {
   const [answers, setAnswers] = useState<boolean[]>([]);
 
   const storeTypes = [...new Set(items.flatMap((item) => item.storeTypes))];
+  // Checked place by place, so everything in one room comes one after another.
   const storeItems = selectedStoreType
-    ? items.filter((item) => item.storeTypes.includes(selectedStoreType))
+    ? orderByPlace(items.filter((item) => item.storeTypes.includes(selectedStoreType)))
     : [];
   const currentIndex = answers.length;
   const isComplete = storeItems.length > 0 && currentIndex >= storeItems.length;
   const shortItems = shortItemIds(storeItems.map((item) => item.id), answers);
   const currentItem = storeItems[currentIndex];
+  const place = placeProgress(storeItems, currentIndex);
   const progress = storeItems.length
     ? (currentIndex / storeItems.length) * 100
     : 0;
@@ -156,7 +164,7 @@ export default function StockCheckScreen() {
               Where are you going?
             </Text>
             <Text style={[styles.completeCopy, { color: colors.mutedForeground }]}>
-              Choose a store and we’ll only check items you buy there.
+              Choose a store and we’ll check the items you buy there, one storage place at a time.
             </Text>
           </View>
           <View style={styles.storeOptions}>
@@ -280,6 +288,21 @@ export default function StockCheckScreen() {
             </View>
 
             <View style={styles.questionBlock}>
+              {place ? (
+                <View
+                  accessibilityLabel={`${place.place}, item ${place.position} of ${place.count} here`}
+                  style={[styles.placePill, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  testID="check-place"
+                >
+                  <Feather name="map-pin" size={13} color={colors.primary} />
+                  <Text style={[styles.placeName, { color: colors.foreground }]} numberOfLines={1}>
+                    {place.place}
+                  </Text>
+                  <Text style={[styles.placeCount, { color: colors.mutedForeground }]}>
+                    {place.position} of {place.count}
+                  </Text>
+                </View>
+              ) : null}
               <View style={[styles.itemIcon, { backgroundColor: colors.accent }]}>
                 <Feather name="package" size={22} color={colors.primary} />
               </View>
@@ -302,12 +325,14 @@ export default function StockCheckScreen() {
               <Text style={[styles.questionSuffix, { color: colors.mutedForeground }]}>
                 on hand?
               </Text>
-              <View style={styles.locationLine}>
-                <Feather name="map-pin" size={13} color={colors.mutedForeground} />
-                <Text style={[styles.locationText, { color: colors.mutedForeground }]}>
-                  Check {currentItem.location.toLowerCase()} · {selectedStoreType}
-                </Text>
-              </View>
+              {place?.nextPlace && place.position === place.count ? (
+                <View style={styles.locationLine} testID="next-place">
+                  <Feather name="corner-down-right" size={13} color={colors.mutedForeground} />
+                  <Text style={[styles.locationText, { color: colors.mutedForeground }]}>
+                    Next: {place.nextPlace}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           </ScrollView>
 
@@ -400,7 +425,10 @@ const styles = StyleSheet.create({
   percentText: { fontFamily: 'Inter_700Bold', fontSize: 11 },
   progressTrack: { height: 4, borderRadius: 4, overflow: 'hidden' },
   progressFill: { height: 4, borderRadius: 4 },
-  questionBlock: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 44, paddingBottom: 24 },
+  questionBlock: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 32, paddingBottom: 24 },
+  placePill: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '90%', borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 7, marginBottom: 18 },
+  placeName: { fontFamily: 'Inter_700Bold', fontSize: 12, flexShrink: 1 },
+  placeCount: { fontFamily: 'Inter_500Medium', fontSize: 11 },
   itemIcon: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 19 },
   itemName: { fontFamily: 'Inter_700Bold', fontSize: 28, textAlign: 'center', letterSpacing: -0.5, marginBottom: 12 },
   question: { fontFamily: 'Inter_400Regular', fontSize: 14 },

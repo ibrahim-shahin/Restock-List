@@ -5,7 +5,8 @@ import StockCheckScreen from '@/app/stock-check';
 import type { StockItem } from '@/state/StockContext';
 
 const mockCreateBuyList = jest.fn();
-const mockItems: StockItem[] = [
+let mockItems: StockItem[] = [];
+const defaultItems: StockItem[] = [
   { id: 'milk', name: 'Milk', minimumQuantity: 1, restockQuantity: 2, unit: 'L', location: 'Fridge', storeTypes: ['Supermarket'], createdAt: 1 },
   { id: 'bread', name: 'Bread', minimumQuantity: 1, restockQuantity: 1, unit: '', location: 'Pantry', storeTypes: ['Supermarket'], createdAt: 2 },
 ];
@@ -33,6 +34,7 @@ async function startCheck() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockItems = defaultItems;
   mockFocus.current = true;
 });
 
@@ -124,4 +126,32 @@ it("leaves the back button alone while another screen is on top", async () => {
   await startCheck();
 
   expect(listeners).toHaveLength(0);
+});
+
+it('checks one storage place at a time and says where to go next', async () => {
+  const item = (id: string, name: string, location: string): StockItem => ({
+    id, name, minimumQuantity: 1, restockQuantity: 1, unit: '', location, storeTypes: ['Supermarket'], createdAt: 1,
+  });
+  mockItems = [
+    item('yogurt', 'Yogurt', 'Fridge'),
+    item('rice', 'Rice', 'Pantry'),
+    item('milk', 'Milk', 'fridge'),
+  ];
+  await startCheck();
+
+  expect(screen.getByText('Milk')).toBeTruthy();
+  expect(screen.getByTestId('check-place')).toHaveTextContent(/1 of 2/);
+  expect(screen.queryByTestId('next-place')).toBeNull();
+
+  await fireEvent.press(screen.getByTestId('stock-answer-yes'));
+  expect(screen.getByText('Yogurt')).toBeTruthy();
+  expect(screen.getByTestId('check-place')).toHaveTextContent(/2 of 2/);
+  expect(screen.getByTestId('next-place')).toHaveTextContent(/Next: Pantry$/);
+
+  await fireEvent.press(screen.getByTestId('stock-answer-no'));
+  expect(screen.getByText('Rice')).toBeTruthy();
+  expect(screen.getByTestId('check-place')).toHaveTextContent(/Pantry.*1 of 1/);
+  await fireEvent.press(screen.getByTestId('stock-answer-no'));
+
+  expect(mockCreateBuyList).toHaveBeenCalledWith(['yogurt', 'rice'], 'Supermarket');
 });
