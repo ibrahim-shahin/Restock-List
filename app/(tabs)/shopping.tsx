@@ -47,7 +47,7 @@ function BuyRow({
             styles.checkbox,
             {
               backgroundColor: item.purchased ? colors.primary : 'transparent',
-              borderColor: item.purchased ? colors.primary : colors.border,
+              borderColor: item.purchased ? colors.primary : colors.mutedForeground,
             },
           ]}
         >

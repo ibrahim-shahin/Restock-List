@@ -13,11 +13,12 @@ import {
 } from '@expo-google-fonts/inter';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useColors } from '@/hooks/useColors';
+import { StatusBar } from 'expo-status-bar';
+import { useColorMode, useColors } from '@/hooks/useColors';
 import { useReminderTaps } from '@/hooks/useReminderTaps';
 import { BackupStatusProvider } from '@/state/BackupStatus';
 import { ReminderProvider } from '@/state/Reminder';
-import { SettingsProvider } from '@/state/Settings';
+import { SettingsProvider, useSettings } from '@/state/Settings';
 import { StockProvider } from '@/state/StockContext';
 import { showRemindersWhileOpen } from '@/utils/reminders';
 
@@ -31,6 +32,7 @@ showRemindersWhileOpen();
 
 function RootLayoutNav() {
   const colors = useColors();
+  const colorMode = useColorMode();
   useReminderTaps();
 
   const screenOptions = {
@@ -41,6 +43,7 @@ function RootLayoutNav() {
 
   return (
     <StockProvider>
+      <StatusBar style={colorMode === 'dark' ? 'light' : 'dark'} />
       <BackupStatusProvider>
         <ReminderProvider>
           <SideMenuProvider>
@@ -60,33 +63,41 @@ function RootLayoutNav() {
   );
 }
 
-export default function RootLayout() {
+function AppShell() {
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
   });
+  // The splash screen stays up until the saved theme is known, so the app
+  // doesn't flash in the wrong colours.
+  const { isReady } = useSettings();
+  const ready = (fontsLoaded || Boolean(fontError)) && isReady;
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded, fontError]);
+    if (ready) SplashScreen.hideAsync();
+  }, [ready]);
 
-  if (!fontsLoaded && !fontError) return null;
+  if (!ready) return null;
 
   return (
+    <SafeAreaProvider>
+      <ErrorBoundary>
+        <GestureHandlerRootView>
+          <KeyboardProvider>
+            <RootLayoutNav />
+          </KeyboardProvider>
+        </GestureHandlerRootView>
+      </ErrorBoundary>
+    </SafeAreaProvider>
+  );
+}
+
+export default function RootLayout() {
+  return (
     <SettingsProvider>
-      <SafeAreaProvider>
-        <ErrorBoundary>
-          <GestureHandlerRootView>
-            <KeyboardProvider>
-              <RootLayoutNav />
-            </KeyboardProvider>
-          </GestureHandlerRootView>
-        </ErrorBoundary>
-      </SafeAreaProvider>
+      <AppShell />
     </SettingsProvider>
   );
 }

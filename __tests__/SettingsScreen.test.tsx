@@ -8,7 +8,7 @@ const mockUpdateSettings = jest.fn();
 jest.mock('@/state/Settings', () => ({
   ...jest.requireActual('@/state/Settings'),
   useSettings: () => ({
-    settings: { backupReminderDays: 14, haptics: true },
+    settings: { backupReminderDays: 14, haptics: true, theme: 'system', colorTheme: 'forest' },
     isReady: true,
     updateSettings: mockUpdateSettings,
   }),
@@ -52,4 +52,24 @@ it('turns vibration off', async () => {
   await fireEvent(screen.getByTestId('settings-vibration'), 'valueChange', false);
 
   expect(mockUpdateSettings).toHaveBeenCalledWith({ haptics: false });
+});
+
+it('switches between following the phone, light and dark', async () => {
+  await render(<SettingsScreen />);
+  expect(screen.getByTestId('theme-system').props.accessibilityState).toEqual({ selected: true });
+
+  await fireEvent.press(screen.getByTestId('theme-dark'));
+  expect(mockUpdateSettings).toHaveBeenLastCalledWith({ theme: 'dark' });
+
+  await fireEvent.press(screen.getByTestId('theme-light'));
+  expect(mockUpdateSettings).toHaveBeenLastCalledWith({ theme: 'light' });
+});
+
+it('picks a colour theme', async () => {
+  await render(<SettingsScreen />);
+  expect(screen.getByTestId('color-theme-forest').props.accessibilityState).toEqual({ selected: true });
+
+  await fireEvent.press(screen.getByTestId('color-theme-ocean'));
+
+  expect(mockUpdateSettings).toHaveBeenCalledWith({ colorTheme: 'ocean' });
 });

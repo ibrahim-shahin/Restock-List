@@ -161,7 +161,7 @@ export default function ReminderScreen() {
               disabled={disabled}
               onValueChange={(enabled) => void apply({ ...settings, enabled })}
               thumbColor={colors.card}
-              trackColor={{ false: colors.border, true: colors.primary }}
+              trackColor={{ false: colors.mutedForeground, true: colors.primary }}
               value={settings.enabled}
               testID="reminder-switch"
             />

@@ -13,9 +13,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { OptionChips } from '@/components/OptionChips';
-import { useColors } from '@/hooks/useColors';
+import { COLOR_THEMES, palettes } from '@/constants/colors';
+import { useColorMode, useColors } from '@/hooks/useColors';
 import { useReminder } from '@/state/Reminder';
-import { BACKUP_REMINDER_OPTIONS, useSettings } from '@/state/Settings';
+import { BACKUP_REMINDER_OPTIONS, THEME_OPTIONS, useSettings } from '@/state/Settings';
 import { describeReminder } from '@/utils/reminders';
 
 type IconName = ComponentProps<typeof Feather>['name'];
@@ -52,6 +53,7 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { settings, updateSettings } = useSettings();
   const { reminder } = useReminder();
+  const colorMode = useColorMode();
   const version = Constants.expoConfig?.version;
 
   return (
@@ -73,6 +75,65 @@ export default function SettingsScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 28 }]}
         showsVerticalScrollIndicator={false}
       >
+        <Section title="APPEARANCE">
+          <View style={styles.block}>
+            <View style={styles.row}>
+              <RowHeading icon="sun" title="Theme" subtitle="Light, dark, or the same as your phone." />
+            </View>
+            <OptionChips
+              options={THEME_OPTIONS}
+              value={settings.theme}
+              onSelect={(theme) => updateSettings({ theme })}
+              testIDPrefix="theme"
+            />
+          </View>
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <View style={styles.block}>
+            <View style={styles.row}>
+              <RowHeading icon="droplet" title="Colour" />
+            </View>
+            <View style={styles.swatches}>
+              {COLOR_THEMES.map((theme) => {
+                const selected = settings.colorTheme === theme.key;
+                const swatch = palettes[theme.key][colorMode];
+                return (
+                  <Pressable
+                    key={theme.key}
+                    accessibilityLabel={`${theme.name} colours`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() => updateSettings({ colorTheme: theme.key })}
+                    style={styles.swatchOption}
+                    testID={`color-theme-${theme.key}`}
+                  >
+                    <View
+                      style={[
+                        styles.swatchRing,
+                        { borderColor: selected ? colors.foreground : 'transparent' },
+                      ]}
+                    >
+                      <View style={[styles.swatch, { backgroundColor: swatch.primary }]}>
+                        <View style={[styles.swatchDot, { backgroundColor: swatch.accent }]} />
+                        {selected ? (
+                          <Feather name="check" size={15} color={swatch.primaryForeground} />
+                        ) : null}
+                      </View>
+                    </View>
+                    <Text
+                      style={[
+                        styles.swatchName,
+                        { color: selected ? colors.foreground : colors.mutedForeground },
+                      ]}
+                    >
+                      {theme.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </Section>
+
         <Section title="REMINDERS">
           <Pressable
             accessibilityRole="button"
@@ -119,7 +180,7 @@ export default function SettingsScreen() {
               accessibilityLabel="Vibration"
               onValueChange={(haptics) => updateSettings({ haptics })}
               thumbColor={colors.card}
-              trackColor={{ false: colors.border, true: colors.primary }}
+              trackColor={{ false: colors.mutedForeground, true: colors.primary }}
               value={settings.haptics}
               testID="settings-vibration"
             />
@@ -156,5 +217,11 @@ const styles = StyleSheet.create({
   rowTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 14 },
   rowSubtitle: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },
   divider: { height: StyleSheet.hairlineWidth },
+  swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, paddingLeft: 48 },
+  swatchOption: { alignItems: 'center', gap: 6 },
+  swatchRing: { padding: 3, borderRadius: 24, borderWidth: 2 },
+  swatch: { height: 36, width: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  swatchDot: { position: 'absolute', right: -6, bottom: -6, height: 20, width: 20, borderRadius: 10 },
+  swatchName: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
   pressed: { opacity: 0.7 },
 });

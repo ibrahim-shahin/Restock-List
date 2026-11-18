@@ -190,7 +190,7 @@ export function SideMenuProvider({ children }: { children: ReactNode }) {
               <MenuLink
                 icon="settings"
                 title="Settings"
-                subtitle="Reminders, vibration and more"
+                subtitle="Theme, reminders and more"
                 onPress={() => go('/settings')}
                 testID="menu-settings"
               />
