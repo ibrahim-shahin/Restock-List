@@ -194,6 +194,24 @@ export default function SettingsScreen() {
           </Pressable>
         </Section>
 
+        <Section title="SHOPPING">
+          <View style={styles.row}>
+            <RowHeading
+              icon="sun"
+              title="Keep the screen on"
+              subtitle="While the buy list is open, so your phone doesn't lock while you shop."
+            />
+            <Switch
+              accessibilityLabel="Keep the screen on"
+              onValueChange={(keepScreenOn) => updateSettings({ keepScreenOn })}
+              thumbColor={colors.card}
+              trackColor={{ false: colors.mutedForeground, true: colors.primary }}
+              value={settings.keepScreenOn}
+              testID="settings-keep-screen-on"
+            />
+          </View>
+        </Section>
+
         <Section title="FEEL">
           <View style={styles.row}>
             <RowHeading

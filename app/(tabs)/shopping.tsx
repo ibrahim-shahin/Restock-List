@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useIsFocused } from 'expo-router';
 import React from 'react';
 import {
   Alert,
@@ -14,6 +14,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MenuButton } from '@/components/SideMenu';
 import { useColors } from '@/hooks/useColors';
+import { useKeepScreenOn } from '@/hooks/useKeepScreenOn';
+import { useSettings } from '@/state/Settings';
 import { useStock } from '@/state/StockContext';
 import type { BuyListItem } from '@/state/StockContext';
 import { itemEmoji } from '@/utils/emoji';
@@ -120,6 +122,10 @@ export default function ShoppingListScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { shoppingList, items, togglePurchased, clearPurchased, removeFromBuyList } = useStock();
+  const { settings } = useSettings();
+  const isFocused = useIsFocused();
+  // Only while this tab is showing, so it never keeps the screen on elsewhere.
+  useKeepScreenOn(settings.keepScreenOn && isFocused);
   const activeItems = shoppingList.filter((item) => !item.purchased);
   const purchasedItems = shoppingList.filter((item) => item.purchased);
   const storeGroups = [...new Set(shoppingList.map((item) => item.shoppingStoreType))];

@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import React from 'react';
 import { Share } from 'react-native';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import ShoppingListScreen from '@/app/(tabs)/shopping';
 import type { BuyListItem } from '@/state/StockContext';
 
@@ -27,13 +28,24 @@ jest.mock('@/state/StockContext', () => ({
     removeFromBuyList: mockRemoveFromBuyList,
   }),
 }));
-jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
+const mockFocused = { current: true };
+const mockKeepScreenOn = { current: false };
+jest.mock('expo-router', () => ({ router: { push: jest.fn() }, useIsFocused: () => mockFocused.current }));
+jest.mock('@/state/Settings', () => ({
+  useSettings: () => ({ settings: { keepScreenOn: mockKeepScreenOn.current } }),
+}));
+jest.mock('expo-keep-awake', () => ({
+  activateKeepAwakeAsync: jest.fn(() => Promise.resolve()),
+  deactivateKeepAwake: jest.fn(() => Promise.resolve()),
+}));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockFocused.current = true;
+  mockKeepScreenOn.current = false;
 });
 
 it('marks one-time items and lets you remove them', async () => {
@@ -77,6 +89,26 @@ it('shows notes under the item name', async () => {
 
   expect(screen.getByTestId('buy-note-milk')).toHaveTextContent('Full fat');
   expect(screen.queryByTestId('buy-note-once-1')).toBeNull();
+});
+
+describe('keeping the screen on', () => {
+  it('keeps it on while the buy list is open, when that is switched on', async () => {
+    mockKeepScreenOn.current = true;
+    const { unmount } = await render(<ShoppingListScreen />);
+
+    expect(activateKeepAwakeAsync).toHaveBeenCalledWith('home-stock-buy-list');
+    await unmount();
+    expect(deactivateKeepAwake).toHaveBeenCalledWith('home-stock-buy-list');
+  });
+
+  it('leaves the screen alone when switched off or when another tab is showing', async () => {
+    await render(<ShoppingListScreen />);
+    mockKeepScreenOn.current = true;
+    mockFocused.current = false;
+    await render(<ShoppingListScreen />);
+
+    expect(activateKeepAwakeAsync).not.toHaveBeenCalled();
+  });
 });
 
 it('reads the amount, note and place to screen readers', async () => {

@@ -38,6 +38,8 @@ export type Settings = {
   colorTheme: ColorThemeKey;
   // Storage places in the order stock checks visit them; empty means A to Z.
   placeOrder: string[];
+  // Keeps the screen on while the buy list is open.
+  keepScreenOn: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -46,6 +48,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   colorTheme: 'forest',
   placeOrder: [],
+  keepScreenOn: false,
 };
 
 const MAX_ROUTE_PLACES = 100;
@@ -86,6 +89,8 @@ export function readSettings(saved: string | null): Settings {
           .map((place) => place.trim())
           .slice(0, MAX_ROUTE_PLACES)
       : DEFAULT_SETTINGS.placeOrder,
+    keepScreenOn:
+      typeof value.keepScreenOn === 'boolean' ? value.keepScreenOn : DEFAULT_SETTINGS.keepScreenOn,
   };
 }
 

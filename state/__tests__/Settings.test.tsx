@@ -34,7 +34,14 @@ async function renderSettings() {
   return hook;
 }
 
-const DEFAULTS = { backupReminderDays: 14, haptics: true, theme: 'system', colorTheme: 'forest', placeOrder: [] };
+const DEFAULTS = {
+  backupReminderDays: 14,
+  haptics: true,
+  theme: 'system',
+  colorTheme: 'forest',
+  placeOrder: [],
+  keepScreenOn: false,
+};
 
 beforeEach(() => {
   mockStorage.clear();
@@ -54,7 +61,14 @@ it('starts with the defaults', async () => {
 it('loads saved settings', async () => {
   mockStorage.set(
     KEY,
-    JSON.stringify({ backupReminderDays: 30, haptics: false, theme: 'dark', colorTheme: 'plum', placeOrder: ['Kitchen'] }),
+    JSON.stringify({
+      backupReminderDays: 30,
+      haptics: false,
+      theme: 'dark',
+      colorTheme: 'plum',
+      placeOrder: ['Kitchen'],
+      keepScreenOn: true,
+    }),
   );
 
   const { result } = await renderSettings();
@@ -65,6 +79,7 @@ it('loads saved settings', async () => {
     theme: 'dark',
     colorTheme: 'plum',
     placeOrder: ['Kitchen'],
+    keepScreenOn: true,
   });
   expect(setHapticsEnabled).toHaveBeenLastCalledWith(false);
 });

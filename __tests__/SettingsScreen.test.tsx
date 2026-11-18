@@ -5,7 +5,14 @@ import SettingsScreen from '@/app/settings';
 
 const mockUpdateSettings = jest.fn();
 const mockSettings = {
-  current: { backupReminderDays: 14, haptics: true, theme: 'system', colorTheme: 'forest', placeOrder: [] as string[] },
+  current: {
+    backupReminderDays: 14,
+    haptics: true,
+    theme: 'system',
+    colorTheme: 'forest',
+    placeOrder: [] as string[],
+    keepScreenOn: false,
+  },
 };
 const mockLocations = { current: ['Pantry', 'Fridge', 'Bathroom', 'Kitchen'] };
 
@@ -98,4 +105,12 @@ it('shows the start of a custom route', async () => {
   await render(<SettingsScreen />);
 
   expect(screen.getByText('Kitchen → Fridge → Pantry → …')).toBeTruthy();
+});
+
+it('turns on keeping the screen on while shopping', async () => {
+  await render(<SettingsScreen />);
+
+  await fireEvent(screen.getByTestId('settings-keep-screen-on'), 'valueChange', true);
+
+  expect(mockUpdateSettings).toHaveBeenCalledWith({ keepScreenOn: true });
 });
