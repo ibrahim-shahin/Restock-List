@@ -4,11 +4,19 @@ import React from 'react';
 import SettingsScreen from '@/app/settings';
 
 const mockUpdateSettings = jest.fn();
+const mockSettings = {
+  current: { backupReminderDays: 14, haptics: true, theme: 'system', colorTheme: 'forest', placeOrder: [] as string[] },
+};
+const mockLocations = { current: ['Pantry', 'Fridge', 'Bathroom', 'Kitchen'] };
+
+jest.mock('@/state/StockContext', () => ({
+  useStock: () => ({ items: mockLocations.current.map((location) => ({ location })) }),
+}));
 
 jest.mock('@/state/Settings', () => ({
   ...jest.requireActual('@/state/Settings'),
   useSettings: () => ({
-    settings: { backupReminderDays: 14, haptics: true, theme: 'system', colorTheme: 'forest' },
+    settings: { ...mockSettings.current },
     isReady: true,
     updateSettings: mockUpdateSettings,
   }),
@@ -24,6 +32,8 @@ jest.mock('react-native-safe-area-context', () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockSettings.current = { ...mockSettings.current, placeOrder: [] };
+  mockLocations.current = ['Pantry', 'Fridge', 'Bathroom', 'Kitchen'];
 });
 
 it('shows the weekly reminder and opens its screen', async () => {
@@ -72,4 +82,20 @@ it('picks a colour theme', async () => {
   await fireEvent.press(screen.getByTestId('color-theme-ocean'));
 
   expect(mockUpdateSettings).toHaveBeenCalledWith({ colorTheme: 'ocean' });
+});
+
+it('summarises the stock check route and opens it', async () => {
+  await render(<SettingsScreen />);
+  expect(screen.getByText('A to Z by storage place. Tap to set your own order.')).toBeTruthy();
+
+  await fireEvent.press(screen.getByTestId('settings-check-route'));
+  expect(router.push).toHaveBeenCalledWith('/check-route');
+});
+
+it('shows the start of a custom route', async () => {
+  mockSettings.current = { ...mockSettings.current, placeOrder: ['Kitchen', 'Fridge', 'Pantry', 'Bathroom'] };
+
+  await render(<SettingsScreen />);
+
+  expect(screen.getByText('Kitchen → Fridge → Pantry → …')).toBeTruthy();
 });

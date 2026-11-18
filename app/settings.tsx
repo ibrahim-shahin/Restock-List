@@ -16,8 +16,10 @@ import { OptionChips } from '@/components/OptionChips';
 import { COLOR_THEMES, palettes } from '@/constants/colors';
 import { useColorMode, useColors } from '@/hooks/useColors';
 import { useReminder } from '@/state/Reminder';
+import { useStock } from '@/state/StockContext';
 import { BACKUP_REMINDER_OPTIONS, THEME_OPTIONS, useSettings } from '@/state/Settings';
 import { describeReminder } from '@/utils/reminders';
+import { orderPlaces } from '@/utils/stockCheck';
 
 type IconName = ComponentProps<typeof Feather>['name'];
 
@@ -54,6 +56,17 @@ export default function SettingsScreen() {
   const { settings, updateSettings } = useSettings();
   const { reminder } = useReminder();
   const colorMode = useColorMode();
+  const { items } = useStock();
+  const route = orderPlaces(
+    items.map((item) => item.location),
+    settings.placeOrder,
+  );
+  const routeSummary =
+    route.length === 0
+      ? 'Add items with storage places first'
+      : settings.placeOrder.length === 0
+        ? 'A to Z by storage place. Tap to set your own order.'
+        : `${route.slice(0, 3).join(' → ')}${route.length > 3 ? ' → …' : ''}`;
   const version = Constants.expoConfig?.version;
 
   return (
@@ -167,6 +180,18 @@ export default function SettingsScreen() {
               testIDPrefix="backup-reminder-days"
             />
           </View>
+        </Section>
+
+        <Section title="STOCK CHECK">
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/check-route')}
+            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+            testID="settings-check-route"
+          >
+            <RowHeading icon="map" title="Route through your home" subtitle={routeSummary} />
+            <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+          </Pressable>
         </Section>
 
         <Section title="FEEL">

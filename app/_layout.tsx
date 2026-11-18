@@ -55,6 +55,7 @@ function RootLayoutNav() {
               <Stack.Screen name="one-time-item" options={{ presentation: 'modal' }} />
               <Stack.Screen name="reminder" options={{ presentation: 'modal' }} />
               <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
+              <Stack.Screen name="check-route" options={{ presentation: 'modal' }} />
             </Stack>
           </SideMenuProvider>
         </ReminderProvider>

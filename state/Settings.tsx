@@ -36,6 +36,8 @@ export type Settings = {
   haptics: boolean;
   theme: ThemeSetting;
   colorTheme: ColorThemeKey;
+  // Storage places in the order stock checks visit them; empty means A to Z.
+  placeOrder: string[];
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -43,7 +45,10 @@ export const DEFAULT_SETTINGS: Settings = {
   haptics: true,
   theme: 'system',
   colorTheme: 'forest',
+  placeOrder: [],
 };
+
+const MAX_ROUTE_PLACES = 100;
 
 // If storage doesn't answer by then, start with the defaults anyway.
 const LOAD_TIMEOUT_MS = 2000;
@@ -75,6 +80,12 @@ export function readSettings(saved: string | null): Settings {
     colorTheme: COLOR_THEMES.some((option) => option.key === value.colorTheme)
       ? (value.colorTheme as ColorThemeKey)
       : DEFAULT_SETTINGS.colorTheme,
+    placeOrder: Array.isArray(value.placeOrder)
+      ? value.placeOrder
+          .filter((place): place is string => typeof place === 'string' && place.trim() !== '')
+          .map((place) => place.trim())
+          .slice(0, MAX_ROUTE_PLACES)
+      : DEFAULT_SETTINGS.placeOrder,
   };
 }
 

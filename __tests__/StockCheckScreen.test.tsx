@@ -11,6 +11,10 @@ const defaultItems: StockItem[] = [
   { id: 'bread', name: 'Bread', minimumQuantity: 1, restockQuantity: 1, unit: '', location: 'Pantry', storeTypes: ['Supermarket'], createdAt: 2 },
 ];
 
+const mockPlaceOrder = { current: [] as string[] };
+jest.mock('@/state/Settings', () => ({
+  useSettings: () => ({ settings: { placeOrder: mockPlaceOrder.current } }),
+}));
 jest.mock('@/state/StockContext', () => ({
   useStock: () => ({ items: mockItems, createBuyList: mockCreateBuyList }),
 }));
@@ -35,6 +39,7 @@ async function startCheck() {
 beforeEach(() => {
   jest.clearAllMocks();
   mockItems = defaultItems;
+  mockPlaceOrder.current = [];
   mockFocus.current = true;
 });
 
@@ -154,4 +159,13 @@ it('checks one storage place at a time and says where to go next', async () => {
   await fireEvent.press(screen.getByTestId('stock-answer-no'));
 
   expect(mockCreateBuyList).toHaveBeenCalledWith(['yogurt', 'rice'], 'Supermarket');
+});
+
+it('follows your route through the home', async () => {
+  mockPlaceOrder.current = ['Pantry', 'Fridge'];
+
+  await startCheck();
+
+  expect(screen.getByText('Bread')).toBeTruthy();
+  expect(screen.getByTestId('next-place')).toHaveTextContent(/Next: Fridge$/);
 });

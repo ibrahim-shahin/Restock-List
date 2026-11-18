@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
+import { useSettings } from '@/state/Settings';
 import { useStock } from '@/state/StockContext';
 import { tapFeedback } from '@/utils/haptics';
 import {
@@ -26,13 +27,17 @@ export default function StockCheckScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { items, createBuyList } = useStock();
+  const { settings } = useSettings();
   const [selectedStoreType, setSelectedStoreType] = useState<string | null>(null);
   const [answers, setAnswers] = useState<boolean[]>([]);
 
   const storeTypes = [...new Set(items.flatMap((item) => item.storeTypes))];
-  // Checked place by place, so everything in one room comes one after another.
+  // Checked place by place, in the order of your route through the home.
   const storeItems = selectedStoreType
-    ? orderByPlace(items.filter((item) => item.storeTypes.includes(selectedStoreType)))
+    ? orderByPlace(
+        items.filter((item) => item.storeTypes.includes(selectedStoreType)),
+        settings.placeOrder,
+      )
     : [];
   const currentIndex = answers.length;
   const isComplete = storeItems.length > 0 && currentIndex >= storeItems.length;

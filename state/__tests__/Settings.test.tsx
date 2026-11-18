@@ -34,7 +34,7 @@ async function renderSettings() {
   return hook;
 }
 
-const DEFAULTS = { backupReminderDays: 14, haptics: true, theme: 'system', colorTheme: 'forest' };
+const DEFAULTS = { backupReminderDays: 14, haptics: true, theme: 'system', colorTheme: 'forest', placeOrder: [] };
 
 beforeEach(() => {
   mockStorage.clear();
@@ -52,11 +52,20 @@ it('starts with the defaults', async () => {
 });
 
 it('loads saved settings', async () => {
-  mockStorage.set(KEY, JSON.stringify({ backupReminderDays: 30, haptics: false, theme: 'dark', colorTheme: 'plum' }));
+  mockStorage.set(
+    KEY,
+    JSON.stringify({ backupReminderDays: 30, haptics: false, theme: 'dark', colorTheme: 'plum', placeOrder: ['Kitchen'] }),
+  );
 
   const { result } = await renderSettings();
 
-  expect(result.current.settings).toEqual({ backupReminderDays: 30, haptics: false, theme: 'dark', colorTheme: 'plum' });
+  expect(result.current.settings).toEqual({
+    backupReminderDays: 30,
+    haptics: false,
+    theme: 'dark',
+    colorTheme: 'plum',
+    placeOrder: ['Kitchen'],
+  });
   expect(setHapticsEnabled).toHaveBeenLastCalledWith(false);
 });
 
@@ -78,6 +87,8 @@ it('falls back to the default for each value that is missing or invalid', () => 
     readSettings(JSON.stringify({ backupReminderDays: 9, haptics: 'yes', theme: 'sepia', colorTheme: 'neon' })),
   ).toEqual(DEFAULTS);
   expect(readSettings(JSON.stringify({ backupReminderDays: 0 }))).toEqual({ ...DEFAULTS, backupReminderDays: 0 });
+  expect(readSettings(JSON.stringify({ placeOrder: [' Fridge ', 3, '', 'Pantry'] })).placeOrder).toEqual(['Fridge', 'Pantry']);
+  expect(readSettings(JSON.stringify({ placeOrder: 'Fridge' })).placeOrder).toEqual([]);
 });
 
 it('works with the defaults outside a provider', async () => {
