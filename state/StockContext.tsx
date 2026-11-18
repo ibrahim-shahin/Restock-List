@@ -61,7 +61,8 @@ type StockContextValue = SavedData & {
   createBuyList: (itemIds: string[], storeType: string) => void;
   // Returns null when added, otherwise a message saying what to fix.
   addOneTimeItem: (draft: OneTimeItemDraft) => string | null;
-  removeFromBuyList: (entryId: string) => void;
+  // Returns a function that puts the entry back where it was, or null if it wasn't listed.
+  removeFromBuyList: (entryId: string) => (() => void) | null;
   togglePurchased: (entryId: string) => void;
   clearPurchased: () => void;
   // Set while the saved stock can't be loaded; saving stays off meanwhile.
@@ -751,7 +752,26 @@ export function StockProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const removeFromBuyList = useCallback((entryId: string) => {
+    const list = currentDataRef.current.shoppingList;
+    const index = list.findIndex((entry) => entry.entryId === entryId);
+    if (index < 0) return null;
+    const removed = list[index];
     setShoppingList((current) => current.filter((entry) => entry.entryId !== entryId));
+    return () => {
+      setShoppingList((current) => {
+        // Not if it's back already, or the same thing was added again meanwhile.
+        const nameKey = itemIdFromName(removed.name);
+        const storeKey = removed.shoppingStoreType.toLocaleLowerCase();
+        const alreadyListed = current.some(
+          (entry) =>
+            entry.entryId === removed.entryId ||
+            (!entry.purchased &&
+              entry.shoppingStoreType.toLocaleLowerCase() === storeKey &&
+              itemIdFromName(entry.name) === nameKey),
+        );
+        return alreadyListed ? current : [...current.slice(0, index), removed, ...current.slice(index)];
+      });
+    };
   }, []);
 
   const togglePurchased = useCallback((entryId: string) => {

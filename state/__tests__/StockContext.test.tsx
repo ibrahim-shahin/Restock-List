@@ -801,6 +801,52 @@ describe('one-time items', () => {
     });
 
     expect(result.current.shoppingList).toEqual([]);
+    expect(result.current.removeFromBuyList('not listed')).toBeNull();
+  });
+
+  it("doesn't put an entry back when the same thing was added again meanwhile", async () => {
+    const { result } = await renderStock();
+    await act(() => {
+      result.current.addOneTimeItem({ ...candles, name: 'Cake' });
+    });
+    let restore: (() => void) | null = null;
+    await act(() => {
+      restore = result.current.removeFromBuyList(result.current.shoppingList[0].entryId);
+    });
+    await act(() => {
+      result.current.addOneTimeItem({ ...candles, name: 'cake' });
+    });
+
+    await act(() => {
+      restore?.();
+    });
+
+    expect(buyListNames(result)).toEqual(['cake']);
+  });
+
+  it('puts a removed entry back where it was', async () => {
+    const { result } = await renderStock();
+    for (const name of ['Candles', 'Cake', 'Balloons']) {
+      await act(() => {
+        result.current.addOneTimeItem({ ...candles, name });
+      });
+    }
+
+    let restore: (() => void) | null = null;
+    await act(() => {
+      restore = result.current.removeFromBuyList(result.current.shoppingList[1].entryId);
+    });
+    expect(buyListNames(result)).toEqual(['Candles', 'Balloons']);
+
+    await act(() => {
+      restore?.();
+    });
+    await act(() => {
+      restore?.();
+    });
+
+    expect(buyListNames(result)).toEqual(['Candles', 'Cake', 'Balloons']);
+    await waitFor(() => expect(savedSnapshot().shoppingList).toHaveLength(3));
   });
 
   it('backs up and restores one-time items without merging them into stock items', async () => {

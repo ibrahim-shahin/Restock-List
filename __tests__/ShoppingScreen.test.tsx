@@ -1,12 +1,13 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import React from 'react';
-import { Share } from 'react-native';
+import { AccessibilityInfo, Share } from 'react-native';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import ShoppingListScreen from '@/app/(tabs)/shopping';
 import type { BuyListItem } from '@/state/StockContext';
 
-const mockRemoveFromBuyList = jest.fn();
+const mockRestore = jest.fn();
+const mockRemoveFromBuyList = jest.fn((_entryId: string): (() => void) | null => mockRestore);
 const mockTogglePurchased = jest.fn();
 const milk: BuyListItem = {
   id: 'milk', name: 'Milk', minimumQuantity: 1, restockQuantity: 2, unit: 'L', location: 'Fridge',
@@ -120,4 +121,56 @@ it('reads the amount, note and place to screen readers', async () => {
   expect(screen.getByTestId('buy-item-once-1').props.accessibilityLabel).toBe(
     'Mark purchased: Birthday candles, 2 packs, just this once',
   );
+});
+
+describe('undo after removing a one-time item', () => {
+  it('offers to put it back, and does', async () => {
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility');
+    await render(<ShoppingListScreen />);
+
+    await fireEvent.press(screen.getByTestId('remove-buy-item-once-1'));
+    expect(screen.getByTestId('undo-bar')).toHaveTextContent(/Removed Birthday candles/);
+    expect(screen.getByTestId('undo-remove-button').props.accessibilityLabel).toBe(
+      'Undo removing Birthday candles',
+    );
+    expect(announce).toHaveBeenCalledWith('Removed Birthday candles. Undo is available.');
+
+    await fireEvent.press(screen.getByTestId('undo-remove-button'));
+    expect(mockRestore).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('undo-bar')).toBeNull();
+  });
+
+  it('goes away by itself after a few seconds', async () => {
+    jest.useFakeTimers();
+    await render(<ShoppingListScreen />);
+    await fireEvent.press(screen.getByTestId('remove-buy-item-once-1'));
+
+    await act(async () => {
+      jest.advanceTimersByTime(4000);
+    });
+    expect(screen.getByTestId('undo-bar')).toBeTruthy();
+
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+
+    expect(screen.queryByTestId('undo-bar')).toBeNull();
+    expect(mockRestore).not.toHaveBeenCalled();
+    jest.useRealTimers();
+  });
+
+  it('stays until it is used while a screen reader is on', async () => {
+    jest.useFakeTimers();
+    const screenReader = jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(true);
+    await render(<ShoppingListScreen />);
+    await fireEvent.press(screen.getByTestId('remove-buy-item-once-1'));
+
+    await act(async () => {
+      jest.advanceTimersByTime(60_000);
+    });
+
+    expect(screen.getByTestId('undo-bar')).toBeTruthy();
+    screenReader.mockRestore();
+    jest.useRealTimers();
+  });
 });

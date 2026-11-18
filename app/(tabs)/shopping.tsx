@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useIsFocused } from 'expo-router';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  AccessibilityInfo,
   Alert,
   Platform,
   Pressable,
@@ -20,8 +21,24 @@ import { useStock } from '@/state/StockContext';
 import type { BuyListItem } from '@/state/StockContext';
 import { itemEmoji } from '@/utils/emoji';
 
+const UNDO_SECONDS = 5;
+
 function quantityLabel(item: BuyListItem): string {
   return `${item.restockQuantity} ${item.unit || (item.restockQuantity === 1 ? 'unit' : 'units')}`;
+}
+
+// How long the undo bar stays. With a screen reader on it stays until it's
+// used, so there's time to reach it; otherwise as long as the phone
+// recommends, and at least UNDO_SECONDS.
+async function undoTimeout(): Promise<number | null> {
+  const shortest = UNDO_SECONDS * 1000;
+  try {
+    if (await AccessibilityInfo.isScreenReaderEnabled()) return null;
+    const recommended: unknown = await AccessibilityInfo.getRecommendedTimeoutMillis?.(shortest);
+    return typeof recommended === 'number' ? Math.max(recommended, shortest) : shortest;
+  } catch {
+    return shortest;
+  }
 }
 
 function BuyRow({
@@ -122,6 +139,28 @@ export default function ShoppingListScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { shoppingList, items, togglePurchased, clearPurchased, removeFromBuyList } = useStock();
+  // The last removed one-time item, which can be put back for a few seconds.
+  const [undo, setUndo] = useState<{ name: string; restore: () => void } | null>(null);
+
+  useEffect(() => {
+    if (!undo) return;
+    let isActive = true;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    undoTimeout().then((delay) => {
+      if (isActive && delay !== null) timeout = setTimeout(() => setUndo(null), delay);
+    });
+    return () => {
+      isActive = false;
+      clearTimeout(timeout);
+    };
+  }, [undo]);
+
+  function remove(item: BuyListItem) {
+    const restore = removeFromBuyList(item.entryId);
+    if (!restore) return;
+    setUndo({ name: item.name, restore });
+    AccessibilityInfo.announceForAccessibility(`Removed ${item.name}. Undo is available.`);
+  }
   const { settings } = useSettings();
   const isFocused = useIsFocused();
   // Only while this tab is showing, so it never keeps the screen on elsewhere.
@@ -153,6 +192,34 @@ export default function ShoppingListScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      {/* First in reading order, so a screen reader reaches Undo quickly. */}
+      {undo ? (
+        <View
+          accessibilityLiveRegion="polite"
+          style={[
+            styles.undoBar,
+            { backgroundColor: colors.foreground, bottom: insets.bottom + (Platform.OS === 'web' ? 96 : 72) },
+          ]}
+          testID="undo-bar"
+        >
+          <Text style={[styles.undoText, { color: colors.background }]} numberOfLines={1}>
+            Removed {undo.name}
+          </Text>
+          <Pressable
+            accessibilityLabel={`Undo removing ${undo.name}`}
+            accessibilityRole="button"
+            hitSlop={8}
+            onPress={() => {
+              undo.restore();
+              setUndo(null);
+            }}
+            style={({ pressed }) => [styles.undoButton, pressed && styles.pressed]}
+            testID="undo-remove-button"
+          >
+            <Text style={[styles.undoButtonText, { color: colors.background }]}>Undo</Text>
+          </Pressable>
+        </View>
+      ) : null}
       <ScrollView
         contentContainerStyle={[
           styles.content,
@@ -319,7 +386,7 @@ export default function ShoppingListScreen() {
                         key={item.entryId}
                         item={item}
                         onToggle={() => togglePurchased(item.entryId)}
-                        onRemove={() => removeFromBuyList(item.entryId)}
+                        onRemove={() => remove(item)}
                       />
                     ))}
                     <Pressable
@@ -432,5 +499,9 @@ const styles = StyleSheet.create({
   clearText: { fontFamily: 'Inter_500Medium', fontSize: 11 },
   secondaryButton: { minHeight: 46, borderRadius: 15, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 },
   secondaryButtonText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  undoBar: { position: 'absolute', zIndex: 10, left: 16, right: 16, minHeight: 50, borderRadius: 16, paddingLeft: 16, paddingRight: 6, flexDirection: 'row', alignItems: 'center', gap: 8, elevation: 6 },
+  undoText: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 13 },
+  undoButton: { minHeight: 40, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
+  undoButtonText: { fontFamily: 'Inter_700Bold', fontSize: 13, textDecorationLine: 'underline' },
   pressed: { opacity: 0.7 },
 });
