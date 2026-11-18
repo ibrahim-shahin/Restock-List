@@ -3,8 +3,6 @@ import * as Sharing from 'expo-sharing';
 import type { SavedData } from '@/state/StockContext';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-// The Stock screen reminds you to back up once the last backup is this old.
-export const BACKUP_REMINDER_DAYS = 14;
 // A large household inventory is well under 1 MB, so anything bigger is not a backup.
 const MAX_BACKUP_BYTES = 5 * 1024 * 1024;
 
@@ -72,16 +70,20 @@ export async function pickBackupFile(): Promise<PickedBackup> {
   }
 }
 
-/** A reminder when there is stock that hasn't been backed up recently, otherwise null. */
+/**
+ * A reminder when there is stock that hasn't been backed up in
+ * `reminderDays` days (set in Settings; 0 turns it off), otherwise null.
+ */
 export function backupReminder(
   lastBackupAt: number | null,
   hasItems: boolean,
   now: number,
+  reminderDays = 14,
 ): string | null {
-  if (!hasItems) return null;
+  if (!hasItems || reminderDays <= 0) return null;
   if (lastBackupAt === null) return "You haven't backed up your stock yet.";
   const days = Math.floor((now - lastBackupAt) / DAY_MS);
-  return days >= BACKUP_REMINDER_DAYS ? `Your last backup was ${days} days ago.` : null;
+  return days >= reminderDays ? `Your last backup was ${days} days ago.` : null;
 }
 
 export function describeLastBackup(lastBackupAt: number | null, now: number): string {

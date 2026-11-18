@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MenuButton } from '@/components/SideMenu';
 import { useColors } from '@/hooks/useColors';
 import { useStock } from '@/state/StockContext';
 import type { BuyListItem } from '@/state/StockContext';
@@ -139,8 +140,11 @@ export default function ShoppingListScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <View style={[styles.titleIcon, { backgroundColor: colors.accent }]}>
-            <Feather name="shopping-bag" size={18} color={colors.primary} />
+          <View style={styles.headerTop}>
+            <MenuButton />
+            <View style={[styles.titleIcon, { backgroundColor: colors.accent }]}>
+              <Feather name="shopping-bag" size={18} color={colors.primary} />
+            </View>
           </View>
           <Text style={[styles.eyebrow, { color: colors.primary }]}>READY WHEN YOU ARE</Text>
           <Text style={[styles.title, { color: colors.foreground }]}>Buy list</Text>
@@ -354,7 +358,8 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { paddingHorizontal: 22, gap: 20 },
   header: { gap: 8 },
-  titleIcon: { height: 41, width: 41, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 3 },
+  headerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  titleIcon: { height: 41, width: 41, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   eyebrow: { fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1.5 },
   title: { fontFamily: 'Inter_700Bold', fontSize: 31, letterSpacing: -0.9 },
   subtitle: { fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19, maxWidth: 320 },

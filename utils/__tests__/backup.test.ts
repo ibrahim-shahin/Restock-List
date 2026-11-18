@@ -146,6 +146,17 @@ describe('backup reminder', () => {
     expect(backupReminder(at - 14 * DAY, true, at)).toBe('Your last backup was 14 days ago.');
   });
 
+  it('follows the reminder frequency chosen in Settings', () => {
+    expect(backupReminder(at - 6 * DAY, true, at, 7)).toBeNull();
+    expect(backupReminder(at - 7 * DAY, true, at, 7)).toBe('Your last backup was 7 days ago.');
+    expect(backupReminder(at - 29 * DAY, true, at, 30)).toBeNull();
+  });
+
+  it('never reminds when the reminder is off', () => {
+    expect(backupReminder(null, true, at, 0)).toBeNull();
+    expect(backupReminder(at - 400 * DAY, true, at, 0)).toBeNull();
+  });
+
   it('describes when the last backup was made', () => {
     expect(describeLastBackup(null, at)).toBe('No backup yet');
     expect(describeLastBackup(at - 60_000, at)).toBe('Last backup: today');

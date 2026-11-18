@@ -1,5 +1,4 @@
 import { Feather } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -13,6 +12,7 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useColors } from '@/hooks/useColors';
+import { successFeedback } from '@/utils/haptics';
 import { cleanQuantityInput } from '@/utils/quantity';
 import { useStock, type StockItemDraft } from '@/state/StockContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -153,7 +153,7 @@ export default function ItemFormScreen() {
       setError('An item with this name is already in your stock. Try another name.');
       return;
     }
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    successFeedback();
     router.back();
   }
 

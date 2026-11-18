@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, within } from '@testing-library/react-native';
 import React from 'react';
 import StockHomeScreen from '@/app/(tabs)/index';
 import type { StockItem } from '@/state/StockContext';
@@ -57,4 +57,26 @@ it('says so when nothing matches', async () => {
 
   expect(visibleItemIds()).toHaveLength(0);
   expect(screen.getByText('No items match your search')).toBeTruthy();
+});
+
+it('keeps sorting and filters folded away until asked for', async () => {
+  await render(<StockHomeScreen />);
+  expect(screen.queryByTestId('filter-panel')).toBeNull();
+
+  await fireEvent.press(screen.getByTestId('toggle-filters-button'));
+  expect(screen.getByTestId('filter-panel')).toBeTruthy();
+
+  await fireEvent.press(within(screen.getByTestId('filter-panel')).getByText('Pantry'));
+  expect(visibleItemIds()).toEqual(['stock-item-rice']);
+  expect(screen.getByTestId('toggle-filters-button').props.accessibilityLabel).toBe('Sort and filter, 1 active');
+
+  await fireEvent.press(screen.getByTestId('clear-filters-button'));
+  expect(visibleItemIds()).toHaveLength(3);
+});
+
+it('shows the item and buy-list counts', async () => {
+  await render(<StockHomeScreen />);
+
+  expect(screen.getByTestId('items-count')).toHaveTextContent('3 items');
+  expect(screen.getByTestId('to-buy-count')).toHaveTextContent(/0 to buy/);
 });

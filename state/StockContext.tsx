@@ -1,4 +1,4 @@
-import * as Haptics from 'expo-haptics';
+import { successFeedback, tapFeedback, warningFeedback } from '@/utils/haptics';
 import { getLocalItem, setLocalItem } from './localStore';
 import React, {
   createContext,
@@ -632,7 +632,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
         current,
       ),
     );
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    tapFeedback();
     return itemId;
   }, []);
 
@@ -641,7 +641,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
     setShoppingList((current) =>
       current.filter((entry) => entry.oneTime || entry.id !== id),
     );
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    warningFeedback();
   }, []);
 
   const createBuyList = useCallback(
@@ -669,7 +669,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
           (entry) => entry.shoppingStoreType === storeType && entry.oneTime && !entry.purchased,
         ),
       ]);
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      successFeedback();
     },
     [items],
   );
@@ -716,7 +716,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
       },
     ]);
     setRecentStores((recent) => rememberPlace(store, recent));
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    tapFeedback();
     return null;
   }, []);
 
@@ -732,7 +732,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
           : item,
       ),
     );
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    tapFeedback();
   }, []);
 
   const clearPurchased = useCallback(() => {
@@ -824,7 +824,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
       setRecentStores((current) =>
         uniquePlaces([...normalizedBackup.recentStores, ...current]),
       );
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      successFeedback();
       return {
         importedCount: newItems.length,
         skippedCount,

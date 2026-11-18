@@ -1,5 +1,4 @@
 import { Feather } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { router, useIsFocused } from 'expo-router';
 import React, { useEffect, useEffectEvent, useState } from 'react';
 import {
@@ -14,6 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useStock } from '@/state/StockContext';
+import { tapFeedback } from '@/utils/haptics';
 import {
   nextAnswers,
   orderByPlace,
@@ -50,7 +50,7 @@ export default function StockCheckScreen() {
 
   function answer(hasEnough: boolean) {
     if (!currentItem) return;
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    tapFeedback();
     const next = nextAnswers(answers, hasEnough, storeItems.length);
     setAnswers(next);
     if (next.length === storeItems.length) {
@@ -64,7 +64,7 @@ export default function StockCheckScreen() {
   // Going back from the result re-opens the last item; answering it again
   // rebuilds that store's buy list.
   function goBackOneItem() {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    tapFeedback();
     setAnswers((current) => previousAnswers(current));
   }
 

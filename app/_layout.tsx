@@ -3,6 +3,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { SideMenuProvider } from '@/components/SideMenu';
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -16,6 +17,7 @@ import { useColors } from '@/hooks/useColors';
 import { useReminderTaps } from '@/hooks/useReminderTaps';
 import { BackupStatusProvider } from '@/state/BackupStatus';
 import { ReminderProvider } from '@/state/Reminder';
+import { SettingsProvider } from '@/state/Settings';
 import { StockProvider } from '@/state/StockContext';
 import { showRemindersWhileOpen } from '@/utils/reminders';
 
@@ -41,14 +43,17 @@ function RootLayoutNav() {
     <StockProvider>
       <BackupStatusProvider>
         <ReminderProvider>
-          <Stack screenOptions={screenOptions}>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="item-form" options={{ presentation: 'modal' }} />
-            <Stack.Screen name="stock-check" options={{ presentation: 'modal' }} />
-            <Stack.Screen name="data-tools" options={{ presentation: 'modal' }} />
-            <Stack.Screen name="one-time-item" options={{ presentation: 'modal' }} />
-            <Stack.Screen name="reminder" options={{ presentation: 'modal' }} />
-          </Stack>
+          <SideMenuProvider>
+            <Stack screenOptions={screenOptions}>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="item-form" options={{ presentation: 'modal' }} />
+              <Stack.Screen name="stock-check" options={{ presentation: 'modal' }} />
+              <Stack.Screen name="data-tools" options={{ presentation: 'modal' }} />
+              <Stack.Screen name="one-time-item" options={{ presentation: 'modal' }} />
+              <Stack.Screen name="reminder" options={{ presentation: 'modal' }} />
+              <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
+            </Stack>
+          </SideMenuProvider>
         </ReminderProvider>
       </BackupStatusProvider>
     </StockProvider>
@@ -72,14 +77,16 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <SafeAreaProvider>
-      <ErrorBoundary>
-        <GestureHandlerRootView>
-          <KeyboardProvider>
-            <RootLayoutNav />
-          </KeyboardProvider>
-        </GestureHandlerRootView>
-      </ErrorBoundary>
-    </SafeAreaProvider>
+    <SettingsProvider>
+      <SafeAreaProvider>
+        <ErrorBoundary>
+          <GestureHandlerRootView>
+            <KeyboardProvider>
+              <RootLayoutNav />
+            </KeyboardProvider>
+          </GestureHandlerRootView>
+        </ErrorBoundary>
+      </SafeAreaProvider>
+    </SettingsProvider>
   );
 }
