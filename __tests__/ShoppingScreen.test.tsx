@@ -31,9 +31,12 @@ jest.mock('@/state/StockContext', () => ({
 }));
 const mockFocused = { current: true };
 const mockKeepScreenOn = { current: false };
+const mockPrices = {
+  current: { showPrices: false, currency: '' } as { showPrices: boolean; currency: string; priceDecimals?: 2 | 3 },
+};
 jest.mock('expo-router', () => ({ router: { push: jest.fn() }, useIsFocused: () => mockFocused.current }));
 jest.mock('@/state/Settings', () => ({
-  useSettings: () => ({ settings: { keepScreenOn: mockKeepScreenOn.current } }),
+  useSettings: () => ({ settings: { keepScreenOn: mockKeepScreenOn.current, ...mockPrices.current } }),
 }));
 jest.mock('expo-keep-awake', () => ({
   activateKeepAwakeAsync: jest.fn(() => Promise.resolve()),
@@ -47,6 +50,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockFocused.current = true;
   mockKeepScreenOn.current = false;
+  mockPrices.current = { showPrices: false, currency: '' };
+  milk.price = 1.25;
 });
 
 it('marks one-time items and lets you remove them', async () => {
@@ -172,5 +177,46 @@ describe('undo after removing a one-time item', () => {
     expect(screen.getByTestId('undo-bar')).toBeTruthy();
     screenReader.mockRestore();
     jest.useRealTimers();
+  });
+});
+
+describe('prices', () => {
+  it('stay hidden until prices are turned on', async () => {
+    await render(<ShoppingListScreen />);
+
+    expect(screen.queryByTestId('buy-price-milk')).toBeNull();
+    expect(screen.queryByTestId('trip-estimate')).toBeNull();
+  });
+
+  it('show each line, the store subtotal and what is left to spend', async () => {
+    mockPrices.current = { showPrices: true, currency: 'JD' };
+    await render(<ShoppingListScreen />);
+
+    expect(screen.getByTestId('buy-price-milk')).toHaveTextContent('2.50 JD');
+    expect(screen.queryByTestId('buy-price-once-1')).toBeNull();
+    expect(screen.getByTestId('trip-estimate')).toHaveTextContent(
+      'About 2.50 JD still to spend (1 item has no price)',
+    );
+    expect(screen.getByText('2.50 JD · 2')).toBeTruthy();
+  });
+
+  it('are included when you share the list', async () => {
+    mockPrices.current = { showPrices: true, currency: 'JD' };
+    const share = jest.spyOn(Share, 'share').mockResolvedValue({ action: Share.sharedAction });
+    await render(<ShoppingListScreen />);
+
+    await fireEvent.press(screen.getByTestId('share-buy-list-button'));
+
+    const { message } = share.mock.calls[0][0] as { message: string };
+    expect(message).toContain('• Milk — 2 L, 2.50 JD (Fridge) — Full fat');
+    expect(message).toContain('About 2.50 JD still to spend (1 item has no price)');
+  });
+
+  it('show three decimals for currencies like the dinar', async () => {
+    mockPrices.current = { showPrices: true, currency: 'JD', priceDecimals: 3 };
+    await render(<ShoppingListScreen />);
+
+    expect(screen.getByTestId('buy-price-milk')).toHaveTextContent('2.500 JD');
+    expect(screen.getByTestId('trip-estimate')).toHaveTextContent(/^About 2\.500 JD still to spend/);
   });
 });

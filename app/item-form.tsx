@@ -12,8 +12,10 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useColors } from '@/hooks/useColors';
+import { useSettings } from '@/state/Settings';
 import { EMOJI_CHOICES, suggestEmoji } from '@/utils/emoji';
 import { successFeedback } from '@/utils/haptics';
+import { cleanPriceInput, formatPrice, priceInputValue, readPrice } from '@/utils/price';
 import { cleanQuantityInput } from '@/utils/quantity';
 import { MAX_NOTE_LENGTH, useStock, type StockItemDraft } from '@/state/StockContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -84,6 +86,8 @@ export default function ItemFormScreen() {
   );
   const [unit, setUnit] = useState(existingItem?.unit ?? '');
   const [note, setNote] = useState(existingItem?.note ?? '');
+  const [price, setPrice] = useState(priceInputValue(existingItem?.price));
+  const { settings } = useSettings();
   const [location, setLocation] = useState(existingItem?.location ?? '');
   const [storeTypes, setStoreTypes] = useState<string[]>(
     existingItem?.storeTypes ?? [],
@@ -103,6 +107,7 @@ export default function ItemFormScreen() {
     setRestockQuantity(existingItem.restockQuantity.toString());
     setUnit(existingItem.unit);
     setNote(existingItem.note ?? '');
+    setPrice(priceInputValue(existingItem.price));
     setLocation(existingItem.location);
     setStoreTypes(existingItem.storeTypes);
     setEmoji(existingItem.emoji ?? '');
@@ -157,6 +162,7 @@ export default function ItemFormScreen() {
       storeTypes: cleanStores,
       ...(emoji ? { emoji } : {}),
       ...(note.trim() ? { note: note.trim() } : {}),
+      ...(readPrice(price) !== undefined ? { price: readPrice(price) } : {}),
     };
     const savedId = saveItem(draft, itemId);
     if (!savedId) {
@@ -348,6 +354,24 @@ export default function ItemFormScreen() {
             value={unit}
           />
         </View>
+
+        {settings.showPrices ? (
+          <View style={styles.fieldGroup}>
+            <Text style={[styles.label, { color: colors.foreground }]}>
+              PRICE EACH (OPTIONAL{settings.currency ? `, ${settings.currency}` : ''})
+            </Text>
+            <TextInput
+              accessibilityLabel="Price each"
+              keyboardType="decimal-pad"
+              onChangeText={(text) => setPrice(cleanPriceInput(text, settings.priceDecimals))}
+              placeholder={`e.g. ${formatPrice(1.25, '', settings.priceDecimals)}`}
+              placeholderTextColor={colors.mutedForeground}
+              style={fieldStyle}
+              testID="item-price-input"
+              value={price}
+            />
+          </View>
+        ) : null}
 
         <View style={styles.fieldGroup}>
           <Text style={[styles.label, { color: colors.foreground }]}>NOTE (OPTIONAL)</Text>

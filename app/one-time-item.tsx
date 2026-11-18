@@ -13,6 +13,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useColors } from '@/hooks/useColors';
 import { MAX_NOTE_LENGTH, useStock } from '@/state/StockContext';
+import { useSettings } from '@/state/Settings';
+import { cleanPriceInput, formatPrice, readPrice } from '@/utils/price';
 import { cleanQuantityInput } from '@/utils/quantity';
 
 function uniqueStores(stores: string[]): string[] {
@@ -39,6 +41,8 @@ export default function OneTimeItemScreen() {
   const [quantity, setQuantity] = useState('1');
   const [unit, setUnit] = useState('');
   const [note, setNote] = useState('');
+  const [price, setPrice] = useState('');
+  const { settings } = useSettings();
   // A link can repeat a parameter; use its first value.
   const storeParam = Array.isArray(params.store) ? params.store[0] : params.store;
   // The tapped store and what's typed in the field; typing wins.
@@ -56,6 +60,7 @@ export default function OneTimeItemScreen() {
       unit,
       store,
       note,
+      price: readPrice(price),
     });
     if (message) {
       setError(message);
@@ -148,6 +153,24 @@ export default function OneTimeItemScreen() {
             />
           </View>
         </View>
+
+        {settings.showPrices ? (
+          <View style={styles.fieldGroup}>
+            <Text style={[styles.label, { color: colors.foreground }]}>
+              PRICE EACH (OPTIONAL{settings.currency ? `, ${settings.currency}` : ''})
+            </Text>
+            <TextInput
+              accessibilityLabel="Price each"
+              keyboardType="decimal-pad"
+              onChangeText={(text) => setPrice(cleanPriceInput(text, settings.priceDecimals))}
+              placeholder={`e.g. ${formatPrice(1.25, '', settings.priceDecimals)}`}
+              placeholderTextColor={colors.mutedForeground}
+              style={fieldStyle}
+              testID="one-time-price-input"
+              value={price}
+            />
+          </View>
+        ) : null}
 
         <View style={styles.fieldGroup}>
           <Text style={[styles.label, { color: colors.foreground }]}>NOTE (OPTIONAL)</Text>

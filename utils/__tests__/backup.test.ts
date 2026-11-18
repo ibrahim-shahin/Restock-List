@@ -77,6 +77,7 @@ describe('backup contents', () => {
   it('includes your settings and weekly reminder when given', () => {
     const settings = {
       backupReminderDays: 30, haptics: false, theme: 'dark', colorTheme: 'plum', placeOrder: ['Kitchen'], keepScreenOn: true,
+      showPrices: true, currency: 'JD', priceDecimals: 3,
     } as const;
     const reminder = { enabled: true, weekday: 7, hour: 10 };
 

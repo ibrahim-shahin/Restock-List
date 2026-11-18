@@ -9,7 +9,7 @@ export function OptionChips<T extends string | number>({
   onSelect,
   testIDPrefix,
 }: {
-  options: readonly { value: T; label: string }[];
+  options: readonly { value: T; label: string; accessibilityLabel?: string }[];
   value: T;
   onSelect: (value: T) => void;
   testIDPrefix: string;
@@ -22,6 +22,7 @@ export function OptionChips<T extends string | number>({
         return (
           <Pressable
             key={String(option.value)}
+            accessibilityLabel={option.accessibilityLabel}
             accessibilityRole="button"
             accessibilityState={{ selected }}
             onPress={() => onSelect(option.value)}

@@ -20,6 +20,7 @@ import { useSettings } from '@/state/Settings';
 import { useStock } from '@/state/StockContext';
 import type { BuyListItem } from '@/state/StockContext';
 import { itemEmoji } from '@/utils/emoji';
+import { estimateTotal, formatPrice, lineTotal } from '@/utils/price';
 
 const UNDO_SECONDS = 5;
 
@@ -43,10 +44,13 @@ async function undoTimeout(): Promise<number | null> {
 
 function BuyRow({
   item,
+  priceText,
   onToggle,
   onRemove,
 }: {
   item: BuyListItem;
+  // The line's cost, when prices are on and the item has one.
+  priceText?: string;
   onToggle: () => void;
   onRemove: () => void;
 }) {
@@ -60,6 +64,7 @@ function BuyRow({
         accessibilityLabel={[
           `${item.purchased ? 'Mark not purchased' : 'Mark purchased'}: ${item.name}`,
           quantityLabel(item),
+          priceText,
           item.note,
           item.oneTime ? 'just this once' : item.location,
         ]
@@ -112,6 +117,11 @@ function BuyRow({
               {item.location}
             </Text>
           )}
+          {priceText ? (
+            <Text style={[styles.buyPrice, { color: colors.mutedForeground }]} testID={`buy-price-${item.id}`}>
+              {priceText}
+            </Text>
+          ) : null}
         </View>
         <View style={[styles.quantityPill, { backgroundColor: colors.accent }]}>
           <Text style={[styles.quantityText, { color: colors.primary }]}>
@@ -168,6 +178,17 @@ export default function ShoppingListScreen() {
   const activeItems = shoppingList.filter((item) => !item.purchased);
   const purchasedItems = shoppingList.filter((item) => item.purchased);
   const storeGroups = [...new Set(shoppingList.map((item) => item.shoppingStoreType))];
+  const showPrices = settings.showPrices;
+  const priceOf = (item: BuyListItem) => {
+    const line = showPrices ? lineTotal(item) : undefined;
+    return line === undefined ? undefined : formatPrice(line, settings.currency, settings.priceDecimals);
+  };
+  const estimate = estimateTotal(shoppingList);
+  const estimateText = `About ${formatPrice(estimate.total, settings.currency, settings.priceDecimals)} still to spend${
+    estimate.unpriced > 0
+      ? ` (${estimate.unpriced} ${estimate.unpriced === 1 ? 'item has' : 'items have'} no price)`
+      : ''
+  }`;
 
   function shareBuyList() {
     const message = [
@@ -179,10 +200,13 @@ export default function ShoppingListScreen() {
           .filter((item) => item.shoppingStoreType === store)
           .map(
             (item) =>
-              `${item.purchased ? '✓' : '•'} ${item.name} — ${quantityLabel(item)}${item.oneTime ? '' : ` (${item.location})`}${item.note ? ` — ${item.note}` : ''}`,
+              `${item.purchased ? '✓' : '•'} ${item.name} — ${quantityLabel(item)}${priceOf(item) ? `, ${priceOf(item)}` : ''}${item.oneTime ? '' : ` (${item.location})`}${item.note ? ` — ${item.note}` : ''}`,
           ),
         '',
       ]),
+      ...(showPrices && estimate.total > 0
+        ? [estimateText]
+        : []),
     ].join('\n').trim();
 
     void Share.share({ message, title: 'Home Stock buy list' }).catch(() => {
@@ -306,6 +330,11 @@ export default function ShoppingListScreen() {
                 <Text style={[styles.progressTitle, { color: colors.foreground }]}>
                   {purchasedItems.length} of {shoppingList.length} picked up
                 </Text>
+                {showPrices && estimate.total > 0 ? (
+                  <Text style={[styles.estimate, { color: colors.mutedForeground }]} testID="trip-estimate">
+                    {estimateText}
+                  </Text>
+                ) : null}
               </View>
               <View
                 style={[
@@ -377,7 +406,9 @@ export default function ShoppingListScreen() {
                       {storeType}
                     </Text>
                     <Text style={[styles.storeCount, { color: colors.mutedForeground }]}>
-                      {group.length}
+                      {showPrices && estimateTotal(group).total > 0
+                        ? `${formatPrice(estimateTotal(group).total, settings.currency, settings.priceDecimals)} · ${group.length}`
+                        : group.length}
                     </Text>
                   </View>
                   <View style={[styles.groupCard, { backgroundColor: colors.card }]}>
@@ -385,6 +416,7 @@ export default function ShoppingListScreen() {
                       <BuyRow
                         key={item.entryId}
                         item={item}
+                        priceText={priceOf(item)}
                         onToggle={() => togglePurchased(item.entryId)}
                         onRemove={() => remove(item)}
                       />
@@ -466,6 +498,8 @@ const styles = StyleSheet.create({
   progressCopy: { flex: 1, gap: 5 },
   progressLabel: { fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.2 },
   progressTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 14 },
+  estimate: { fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 16 },
+  buyPrice: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
   progressIcon: { height: 36, width: 36, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   progressTrack: { position: 'absolute', left: 16, right: 16, bottom: 0, height: 3, borderBottomLeftRadius: 10, borderBottomRightRadius: 10, overflow: 'hidden' },
   progressFill: { height: 3, borderRadius: 3 },

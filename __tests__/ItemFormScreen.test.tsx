@@ -14,6 +14,12 @@ jest.mock('@/state/StockContext', () => ({
     deleteItem: jest.fn(),
   }),
 }));
+const mockPrices = {
+  current: { showPrices: false, currency: '' } as { showPrices: boolean; currency: string; priceDecimals?: 2 | 3 },
+};
+jest.mock('@/state/Settings', () => ({
+  useSettings: () => ({ settings: mockPrices.current }),
+}));
 jest.mock('expo-router', () => ({
   router: { back: jest.fn() },
   useLocalSearchParams: () => ({}),
@@ -42,6 +48,7 @@ async function fillInMilk() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockPrices.current = { showPrices: false, currency: '' };
 });
 
 it('picks an icon from the name until you choose one', async () => {
@@ -87,4 +94,34 @@ it('goes back to picking from the name', async () => {
   await fireEvent.press(screen.getByTestId('item-emoji-auto'));
 
   expect(screen.getByTestId('item-emoji-button')).toHaveTextContent('🥛');
+});
+
+it('asks for a price only when prices are turned on', async () => {
+  await render(<ItemFormScreen />);
+  expect(screen.queryByTestId('item-price-input')).toBeNull();
+});
+
+it('saves the price you enter', async () => {
+  mockPrices.current = { showPrices: true, currency: 'JD' };
+  await render(<ItemFormScreen />);
+  await fillInMilk();
+  expect(screen.getByText('PRICE EACH (OPTIONAL, JD)')).toBeTruthy();
+
+  await fireEvent.changeText(screen.getByTestId('item-price-input'), '1,256');
+  expect(screen.getByTestId('item-price-input').props.value).toBe('1.25');
+  await fireEvent.press(screen.getByTestId('save-item-button'));
+
+  expect(mockSaveItem).toHaveBeenCalledWith(expect.objectContaining({ price: 1.25 }), undefined);
+});
+
+it('takes three decimals for currencies like the dinar', async () => {
+  mockPrices.current = { showPrices: true, currency: 'JD', priceDecimals: 3 };
+  await render(<ItemFormScreen />);
+  await fillInMilk();
+
+  await fireEvent.changeText(screen.getByTestId('item-price-input'), '0,3756');
+  expect(screen.getByTestId('item-price-input').props.value).toBe('0.375');
+  await fireEvent.press(screen.getByTestId('save-item-button'));
+
+  expect(mockSaveItem).toHaveBeenCalledWith(expect.objectContaining({ price: 0.375 }), undefined);
 });

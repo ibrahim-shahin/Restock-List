@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,7 +18,12 @@ import { COLOR_THEMES, palettes } from '@/constants/colors';
 import { useColorMode, useColors } from '@/hooks/useColors';
 import { useReminder } from '@/state/Reminder';
 import { useStock } from '@/state/StockContext';
-import { BACKUP_REMINDER_OPTIONS, THEME_OPTIONS, useSettings } from '@/state/Settings';
+import {
+  BACKUP_REMINDER_OPTIONS,
+  PRICE_DECIMAL_OPTIONS,
+  THEME_OPTIONS,
+  useSettings,
+} from '@/state/Settings';
 import { describeReminder } from '@/utils/reminders';
 import { orderPlaces } from '@/utils/stockCheck';
 
@@ -210,6 +216,46 @@ export default function SettingsScreen() {
               testID="settings-keep-screen-on"
             />
           </View>
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <View style={styles.row}>
+            <RowHeading
+              icon="tag"
+              title="Prices"
+              subtitle="Add what things cost and see an estimated total for each trip."
+            />
+            <Switch
+              accessibilityLabel="Prices"
+              onValueChange={(showPrices) => updateSettings({ showPrices })}
+              thumbColor={colors.card}
+              trackColor={{ false: colors.mutedForeground, true: colors.primary }}
+              value={settings.showPrices}
+              testID="settings-show-prices"
+            />
+          </View>
+          {settings.showPrices ? (
+            <View style={[styles.block, styles.priceOptions]}>
+              <TextInput
+                accessibilityLabel="Currency"
+                autoCapitalize="characters"
+                maxLength={6}
+                onChangeText={(currency) => updateSettings({ currency })}
+                placeholder="Currency, e.g. JD"
+                placeholderTextColor={colors.mutedForeground}
+                style={[
+                  styles.currencyInput,
+                  { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground },
+                ]}
+                testID="settings-currency"
+                value={settings.currency}
+              />
+              <OptionChips
+                options={PRICE_DECIMAL_OPTIONS}
+                value={settings.priceDecimals}
+                onSelect={(priceDecimals) => updateSettings({ priceDecimals })}
+                testIDPrefix="price-decimals"
+              />
+            </View>
+          ) : null}
         </Section>
 
         <Section title="FEEL">
@@ -255,11 +301,13 @@ const styles = StyleSheet.create({
   card: { borderRadius: 19, paddingHorizontal: 14, paddingVertical: 4 },
   row: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
   block: { paddingBottom: 14 },
+  priceOptions: { gap: 10 },
   rowIcon: { height: 36, width: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   rowBody: { flex: 1, gap: 3 },
   rowTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 14 },
   rowSubtitle: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },
   divider: { height: StyleSheet.hairlineWidth },
+  currencyInput: { minHeight: 44, marginLeft: 48, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, fontFamily: 'Inter_500Medium', fontSize: 13 },
   swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, paddingLeft: 48 },
   swatchOption: { alignItems: 'center', gap: 6 },
   swatchRing: { padding: 3, borderRadius: 24, borderWidth: 2 },

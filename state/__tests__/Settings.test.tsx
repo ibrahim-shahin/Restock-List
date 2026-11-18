@@ -48,6 +48,9 @@ const DEFAULTS = {
   colorTheme: 'forest',
   placeOrder: [],
   keepScreenOn: false,
+  showPrices: false,
+  currency: '',
+  priceDecimals: 2,
 };
 
 beforeEach(() => {
@@ -87,6 +90,9 @@ it('loads saved settings', async () => {
     colorTheme: 'plum',
     placeOrder: ['Kitchen'],
     keepScreenOn: true,
+    showPrices: false,
+    currency: '',
+    priceDecimals: 2,
   });
   expect(setHapticsEnabled).toHaveBeenLastCalledWith(false);
 });
@@ -111,6 +117,13 @@ it('falls back to the default for each value that is missing or invalid', () => 
   expect(readSettings(JSON.stringify({ backupReminderDays: 0 }))).toEqual({ ...DEFAULTS, backupReminderDays: 0 });
   expect(readSettings(JSON.stringify({ placeOrder: [' Fridge ', 3, '', 'Pantry'] })).placeOrder).toEqual(['Fridge', 'Pantry']);
   expect(readSettings(JSON.stringify({ placeOrder: 'Fridge' })).placeOrder).toEqual([]);
+  expect(readSettings(JSON.stringify({ showPrices: true, currency: '  JOD dinar  ' }))).toMatchObject({
+    showPrices: true,
+    currency: 'JOD di',
+  });
+  expect(readSettings(JSON.stringify({ showPrices: 'yes', currency: 5 }))).toMatchObject({ showPrices: false, currency: '' });
+  expect(readSettings(JSON.stringify({ priceDecimals: 3 })).priceDecimals).toBe(3);
+  expect(readSettings(JSON.stringify({ priceDecimals: 4 })).priceDecimals).toBe(2);
 });
 
 it('works with the defaults outside a provider', async () => {

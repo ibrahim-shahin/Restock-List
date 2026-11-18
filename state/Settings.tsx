@@ -11,6 +11,7 @@ import React, {
 import { Appearance, Platform } from 'react-native';
 import { COLOR_THEMES, type ColorThemeKey } from '@/constants/colors';
 import { setHapticsEnabled } from '@/utils/haptics';
+import type { PriceDecimals } from '@/utils/price';
 import { getLocalItem, setLocalItem } from './localStore';
 
 const SETTINGS_KEY = 'home-stock:settings:v1';
@@ -31,6 +32,11 @@ export const THEME_OPTIONS = [
 
 export type ThemeSetting = (typeof THEME_OPTIONS)[number]['value'];
 
+export const PRICE_DECIMAL_OPTIONS = [
+  { value: 2, label: '0.00', accessibilityLabel: 'Two decimals' },
+  { value: 3, label: '0.000', accessibilityLabel: 'Three decimals' },
+] as const satisfies readonly { value: PriceDecimals; label: string; accessibilityLabel: string }[];
+
 export type Settings = {
   backupReminderDays: number;
   haptics: boolean;
@@ -40,6 +46,12 @@ export type Settings = {
   placeOrder: string[];
   // Keeps the screen on while the buy list is open.
   keepScreenOn: boolean;
+  // Optional prices on items, with an estimated total on the buy list.
+  showPrices: boolean;
+  // Shown after prices, like "JD" or "€"; can be empty.
+  currency: string;
+  // 3 for currencies like the dinar.
+  priceDecimals: PriceDecimals;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -49,7 +61,12 @@ export const DEFAULT_SETTINGS: Settings = {
   colorTheme: 'forest',
   placeOrder: [],
   keepScreenOn: false,
+  showPrices: false,
+  currency: '',
+  priceDecimals: 2,
 };
+
+const MAX_CURRENCY_LENGTH = 6;
 
 const MAX_ROUTE_PLACES = 100;
 
@@ -98,6 +115,14 @@ export function settingsFromValue(input: unknown, fallback: Settings = DEFAULT_S
       : fallback.placeOrder,
     keepScreenOn:
       typeof value.keepScreenOn === 'boolean' ? value.keepScreenOn : fallback.keepScreenOn,
+    showPrices: typeof value.showPrices === 'boolean' ? value.showPrices : fallback.showPrices,
+    currency:
+      typeof value.currency === 'string'
+        ? value.currency.trim().slice(0, MAX_CURRENCY_LENGTH)
+        : fallback.currency,
+    priceDecimals: PRICE_DECIMAL_OPTIONS.some((option) => option.value === value.priceDecimals)
+      ? (value.priceDecimals as PriceDecimals)
+      : fallback.priceDecimals,
   };
 }
 

@@ -114,3 +114,23 @@ it('turns on keeping the screen on while shopping', async () => {
 
   expect(mockUpdateSettings).toHaveBeenCalledWith({ keepScreenOn: true });
 });
+
+it('turns prices on and sets the currency label', async () => {
+  await render(<SettingsScreen />);
+  expect(screen.queryByTestId('settings-currency')).toBeNull();
+
+  await fireEvent(screen.getByTestId('settings-show-prices'), 'valueChange', true);
+  expect(mockUpdateSettings).toHaveBeenCalledWith({ showPrices: true });
+});
+
+it('shows the currency field while prices are on', async () => {
+  mockSettings.current = { ...mockSettings.current, showPrices: true, currency: '' } as typeof mockSettings.current;
+  await render(<SettingsScreen />);
+
+  await fireEvent.changeText(screen.getByTestId('settings-currency'), 'JD');
+  expect(mockUpdateSettings).toHaveBeenCalledWith({ currency: 'JD' });
+
+  await fireEvent.press(screen.getByTestId('price-decimals-3'));
+  expect(mockUpdateSettings).toHaveBeenCalledWith({ priceDecimals: 3 });
+  expect(screen.getByTestId('price-decimals-3').props.accessibilityLabel).toBe('Three decimals');
+});

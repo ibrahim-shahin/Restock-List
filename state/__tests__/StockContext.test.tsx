@@ -963,3 +963,35 @@ describe('item notes', () => {
     expect(result.current.shoppingList[0].note).toBe('Number 7');
   });
 });
+
+describe('item prices', () => {
+  it('saves a price rounded to the thousandth, copies it to the buy list and keeps it after a restart', async () => {
+    const first = await renderStock();
+    await act(() => {
+      first.result.current.saveItem({ ...milk, price: 1.2555 });
+    });
+    await act(() => {
+      first.result.current.createBuyList(['wholemilk'], 'Supermarket');
+    });
+    expect(first.result.current.items[0].price).toBe(1.256);
+    expect(first.result.current.shoppingList[0].price).toBe(1.256);
+    await waitFor(() => expect(savedSnapshot().items[0].price).toBe(1.256));
+    await first.unmount();
+
+    const second = await renderStock();
+    expect(second.result.current.items[0].price).toBe(1.256);
+  });
+
+  it('leaves out prices that are not valid, and lets one-time items have one', async () => {
+    const { result } = await renderStock();
+    await act(() => {
+      result.current.saveItem({ ...milk, price: -2 });
+    });
+    await act(() => {
+      result.current.addOneTimeItem({ name: 'Cake', quantity: 1, unit: '', store: 'Bakery', price: 7.5 });
+    });
+
+    expect(result.current.items[0]).not.toHaveProperty('price');
+    expect(result.current.shoppingList[0].price).toBe(7.5);
+  });
+});

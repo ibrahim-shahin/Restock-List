@@ -54,6 +54,9 @@ const SETTING_NAMES: Partial<Record<keyof Settings, string>> = {
   colorTheme: 'colours',
   placeOrder: 'stock check route',
   keepScreenOn: 'keep screen on',
+  showPrices: 'prices',
+  currency: 'currency',
+  priceDecimals: 'price decimals',
 };
 
 type BackupChanges = { settings: Partial<Settings>; reminder: ReminderSettings | null };

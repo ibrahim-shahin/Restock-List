@@ -1,5 +1,6 @@
 import { EMOJI_CHOICES } from '@/utils/emoji';
 import { successFeedback, tapFeedback, warningFeedback } from '@/utils/haptics';
+import { readPrice } from '@/utils/price';
 import { getLocalItem, setLocalItem } from './localStore';
 import React, {
   createContext,
@@ -26,6 +27,8 @@ export type StockItem = {
   emoji?: string;
   // Brand, size or flavour to look for, shown on the buy list.
   note?: string;
+  // Price of one, for the buy list's estimated total (Settings > Prices).
+  price?: number;
 };
 
 export type StockItemDraft = Omit<StockItem, 'id' | 'createdAt'>;
@@ -44,6 +47,7 @@ export type OneTimeItemDraft = {
   unit: string;
   store: string;
   note?: string;
+  price?: number;
 };
 
 export type SavedData = {
@@ -264,6 +268,7 @@ function normalizeStockItem(
           : legacyCreatedAt,
     ...(readEmoji(record.emoji) ? { emoji: readEmoji(record.emoji) } : {}),
     ...(readNote(record.note) ? { note: readNote(record.note) } : {}),
+    ...(readPrice(record.price) !== undefined ? { price: readPrice(record.price) } : {}),
   };
 }
 
@@ -306,6 +311,7 @@ function normalizeOneTimeEntry(value: unknown): BuyListItem {
     purchased: record.purchased === true,
     oneTime: true,
     ...(readNote(record.note) ? { note: readNote(record.note) } : {}),
+    ...(readPrice(record.price) !== undefined ? { price: readPrice(record.price) } : {}),
   };
 }
 
@@ -610,13 +616,15 @@ export function StockProvider({ children }: { children: ReactNode }) {
         matchSpelling(store, otherItems.flatMap((item) => item.storeTypes)),
       ),
     );
-    const { emoji: draftEmoji, note: draftNote, ...details } = draft;
+    const { emoji: draftEmoji, note: draftNote, price: draftPrice, ...details } = draft;
     const emoji = readEmoji(draftEmoji);
     const note = readNote(draftNote);
+    const price = readPrice(draftPrice);
     const savedItem: StockItem = {
       ...details,
       ...(emoji ? { emoji } : {}),
       ...(note ? { note } : {}),
+      ...(price !== undefined ? { price } : {}),
       name,
       location,
       storeTypes,
@@ -744,6 +752,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
         purchased: false,
         oneTime: true,
         ...(readNote(draft.note) ? { note: readNote(draft.note) } : {}),
+        ...(readPrice(draft.price) !== undefined ? { price: readPrice(draft.price) } : {}),
       },
     ]);
     setRecentStores((recent) => rememberPlace(store, recent));
