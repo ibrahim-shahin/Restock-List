@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -14,6 +14,7 @@ import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollV
 import { useColors } from '@/hooks/useColors';
 import { MAX_NOTE_LENGTH, useStock } from '@/state/StockContext';
 import { useSettings } from '@/state/Settings';
+import { closeAfterKeyboard } from '@/utils/keyboard';
 import { cleanPriceInput, formatPrice, readPrice } from '@/utils/price';
 import { cleanQuantityInput } from '@/utils/quantity';
 
@@ -53,7 +54,16 @@ export default function OneTimeItemScreen() {
   const store = typedStore.trim() ? typedStore : chosenStore;
   const [error, setError] = useState('');
 
+  // Set once the screen starts closing, so a second tap can't add or close twice.
+  const closingRef = useRef(false);
+  function close() {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    closeAfterKeyboard(() => router.back());
+  }
+
   function save() {
+    if (closingRef.current) return;
     const message = addOneTimeItem({
       name,
       quantity: Number(quantity || '1'),
@@ -66,7 +76,7 @@ export default function OneTimeItemScreen() {
       setError(message);
       return;
     }
-    router.back();
+    close();
   }
 
   const fieldStyle = [
@@ -80,7 +90,7 @@ export default function OneTimeItemScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close"
-          onPress={() => router.back()}
+          onPress={close}
           style={styles.closeButton}
           testID="close-one-time-item"
         >

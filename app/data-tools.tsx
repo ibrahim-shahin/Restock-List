@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Alert,
   Platform,
@@ -26,6 +26,7 @@ import {
   shareTextFile,
   type BackupPreferences,
 } from '@/utils/backup';
+import { closeAfterKeyboard } from '@/utils/keyboard';
 import { reminderFromValue, type ReminderSettings } from '@/utils/reminders';
 import { router } from 'expo-router';
 
@@ -133,6 +134,13 @@ export default function DataToolsScreen() {
   const [jsonText, setJsonText] = useState('');
   const [error, setError] = useState('');
   const [isBusy, setIsBusy] = useState(false);
+  // Set once the screen starts closing, so a second tap can't go back twice.
+  const closingRef = useRef(false);
+  function close() {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    closeAfterKeyboard(() => router.back());
+  }
   const stockData = { items, shoppingList, recentLocations, recentStores };
   const canExport = !isLoading && !isBusy && hasStockData(stockData);
 
@@ -307,7 +315,7 @@ export default function DataToolsScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Go back"
-          onPress={() => router.back()}
+          onPress={close}
           style={styles.backButton}
         >
           <Feather name="arrow-left" size={20} color={colors.foreground} />

@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import React from 'react';
+import { KeyboardController } from 'react-native-keyboard-controller';
 import OneTimeItemScreen from '@/app/one-time-item';
 
 const mockAddOneTimeItem = jest.fn((_draft: unknown): string | null => null);
@@ -59,17 +60,41 @@ it('adds the item for the store it was opened from, then closes', async () => {
     store: 'Bakery',
     note: 'Number shapes',
   });
-  expect(router.back).toHaveBeenCalled();
+  // The keyboard goes first, so the screen never closes while it is still moving.
+  expect(KeyboardController.dismiss).toHaveBeenCalled();
+  await waitFor(() => expect(router.back).toHaveBeenCalledTimes(1));
+});
+
+it('adds the item once and closes once, however fast you tap', async () => {
+  mockParams.current = { store: 'Bakery' };
+  let keyboardHidden: () => void = () => undefined;
+  jest.mocked(KeyboardController.dismiss).mockImplementationOnce(
+    () => new Promise<void>((resolve) => (keyboardHidden = resolve)),
+  );
+  await render(<OneTimeItemScreen />);
+  await fireEvent.changeText(screen.getByTestId('one-time-name-input'), 'Cake');
+
+  await fireEvent.press(screen.getByTestId('save-one-time-item'));
+  await fireEvent.press(screen.getByTestId('save-one-time-item'));
+  await fireEvent.press(screen.getByTestId('close-one-time-item'));
+  expect(router.back).not.toHaveBeenCalled();
+
+  keyboardHidden();
+  await waitFor(() => expect(router.back).toHaveBeenCalledTimes(1));
+  expect(mockAddOneTimeItem).toHaveBeenCalledTimes(1);
 });
 
 it('lets you pick a store or type a new one', async () => {
-  await render(<OneTimeItemScreen />);
+  const first = await render(<OneTimeItemScreen />);
   await fireEvent.changeText(screen.getByTestId('one-time-name-input'), 'Plasters');
-
   await fireEvent.press(screen.getByTestId('one-time-store-Supermarket'));
   await fireEvent.press(screen.getByTestId('save-one-time-item'));
   expect(mockAddOneTimeItem).toHaveBeenLastCalledWith(expect.objectContaining({ store: 'Supermarket', quantity: 1 }));
+  await first.unmount();
 
+  await render(<OneTimeItemScreen />);
+  await fireEvent.changeText(screen.getByTestId('one-time-name-input'), 'Plasters');
+  await fireEvent.press(screen.getByTestId('one-time-store-Supermarket'));
   await fireEvent.changeText(screen.getByTestId('one-time-store-input'), 'Pharmacy');
   await fireEvent.press(screen.getByTestId('save-one-time-item'));
   expect(mockAddOneTimeItem).toHaveBeenLastCalledWith(expect.objectContaining({ store: 'Pharmacy' }));

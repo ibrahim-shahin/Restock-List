@@ -15,6 +15,7 @@ import { useColors } from '@/hooks/useColors';
 import { useSettings } from '@/state/Settings';
 import { EMOJI_CHOICES, suggestEmoji } from '@/utils/emoji';
 import { successFeedback } from '@/utils/haptics';
+import { closeAfterKeyboard } from '@/utils/keyboard';
 import { cleanPriceInput, formatPrice, priceInputValue, readPrice } from '@/utils/price';
 import { cleanQuantityInput } from '@/utils/quantity';
 import { MAX_NOTE_LENGTH, useStock, type StockItemDraft } from '@/state/StockContext';
@@ -98,6 +99,13 @@ export default function ItemFormScreen() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const shownEmoji = emoji || suggestEmoji(name);
   const [error, setError] = useState('');
+  // Set once the screen starts closing, so a second tap can't save or close twice.
+  const closingRef = useRef(false);
+  function close() {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    closeAfterKeyboard(() => router.back());
+  }
 
   useEffect(() => {
     if (!existingItem || initialized.current) return;
@@ -130,6 +138,7 @@ export default function ItemFormScreen() {
   }
 
   function save() {
+    if (closingRef.current) return;
     const cleanName = name.trim();
     const cleanLocation = location.trim();
     const cleanStores = [...new Set(storeTypes.map((store) => store.trim()).filter(Boolean))];
@@ -170,7 +179,7 @@ export default function ItemFormScreen() {
       return;
     }
     successFeedback();
-    router.back();
+    close();
   }
 
   function confirmDelete() {
@@ -182,7 +191,7 @@ export default function ItemFormScreen() {
         style: 'destructive',
         onPress: () => {
           deleteItem(itemId);
-          router.back();
+          close();
         },
       },
     ]);
@@ -203,7 +212,7 @@ export default function ItemFormScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close item form"
-          onPress={() => router.back()}
+          onPress={close}
           style={styles.closeButton}
           testID="close-item-form"
         >

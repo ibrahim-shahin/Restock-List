@@ -1,5 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { router } from 'expo-router';
 import React from 'react';
+import { KeyboardController } from 'react-native-keyboard-controller';
 import ItemFormScreen from '@/app/item-form';
 
 const mockSaveItem = jest.fn((_draft: unknown, _id?: string) => 'saved');
@@ -124,4 +126,46 @@ it('takes three decimals for currencies like the dinar', async () => {
   await fireEvent.press(screen.getByTestId('save-item-button'));
 
   expect(mockSaveItem).toHaveBeenCalledWith(expect.objectContaining({ price: 0.375 }), undefined);
+});
+
+describe('closing', () => {
+  it('waits for the keyboard to finish hiding, then closes once', async () => {
+    let keyboardHidden: () => void = () => undefined;
+    jest.mocked(KeyboardController.dismiss).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (keyboardHidden = resolve)),
+    );
+    await render(<ItemFormScreen />);
+    await fillInMilk();
+
+    await fireEvent.press(screen.getByTestId('save-item-button'));
+    await fireEvent.press(screen.getByTestId('save-item-button'));
+    await fireEvent.press(screen.getByTestId('close-item-form'));
+    expect(KeyboardController.dismiss).toHaveBeenCalledTimes(1);
+    expect(router.back).not.toHaveBeenCalled();
+
+    keyboardHidden();
+    await waitFor(() => expect(router.back).toHaveBeenCalledTimes(1));
+    expect(mockSaveItem).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes without saving from the close button', async () => {
+    await render(<ItemFormScreen />);
+
+    await fireEvent.press(screen.getByTestId('close-item-form'));
+
+    await waitFor(() => expect(router.back).toHaveBeenCalledTimes(1));
+    expect(mockSaveItem).not.toHaveBeenCalled();
+  });
+
+  it('stays open when the name is already taken', async () => {
+    mockSaveItem.mockReturnValueOnce(null as never);
+    await render(<ItemFormScreen />);
+    await fillInMilk();
+
+    await fireEvent.press(screen.getByTestId('save-item-button'));
+
+    expect(screen.getByText('An item with this name is already in your stock. Try another name.')).toBeTruthy();
+    expect(KeyboardController.dismiss).not.toHaveBeenCalled();
+    expect(router.back).not.toHaveBeenCalled();
+  });
 });
