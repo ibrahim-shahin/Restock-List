@@ -65,6 +65,9 @@ type StockContextValue = SavedData & {
   saveItem: (draft: StockItemDraft, id?: string) => string | null;
   deleteItem: (id: string) => void;
   createBuyList: (itemIds: string[], storeType: string) => void;
+  // Puts one stock item on the buy list for a store it's sold at, without a
+  // stock check. False when it is already there to buy, or isn't sold there.
+  addToBuyList: (itemId: string, storeType: string) => boolean;
   // Returns null when added, otherwise a message saying what to fix.
   addOneTimeItem: (draft: OneTimeItemDraft) => string | null;
   // Returns a function that puts the entry back where it was, or null if it wasn't listed.
@@ -726,6 +729,24 @@ export function StockProvider({ children }: { children: ReactNode }) {
     [items],
   );
 
+  const addToBuyList = useCallback((itemId: string, storeType: string) => {
+    const current = currentDataRef.current;
+    const item = current.items.find((candidate) => candidate.id === itemId);
+    if (!item || !item.storeTypes.includes(storeType)) return false;
+    const entryId = JSON.stringify([item.id, storeType]);
+    const existing = current.shoppingList.find((entry) => entry.entryId === entryId);
+    if (existing && !existing.purchased) return false;
+    const entry: BuyListItem = { ...item, entryId, shoppingStoreType: storeType, purchased: false };
+    // A ticked-off entry comes back where it was; otherwise it goes at the end.
+    setShoppingList((list) =>
+      existing
+        ? list.map((candidate) => (candidate.entryId === entryId ? entry : candidate))
+        : [...list, entry],
+    );
+    tapFeedback();
+    return true;
+  }, []);
+
   const addOneTimeItem = useCallback((draft: OneTimeItemDraft) => {
     const current = currentDataRef.current;
     const name = draft.name.trim();
@@ -924,6 +945,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
       saveItem,
       deleteItem,
       createBuyList,
+      addToBuyList,
       addOneTimeItem,
       removeFromBuyList,
       togglePurchased,
@@ -945,6 +967,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
       saveItem,
       deleteItem,
       createBuyList,
+      addToBuyList,
       addOneTimeItem,
       removeFromBuyList,
       togglePurchased,

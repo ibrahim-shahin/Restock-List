@@ -1038,3 +1038,58 @@ describe('items without amounts', () => {
     expect(result.current.items[0]).not.toHaveProperty('restockQuantity');
   });
 });
+
+describe('adding one item to the buy list', () => {
+  it('adds it for a store it is sold at, with its details, and only once', async () => {
+    const { result } = await renderStock();
+    await act(() => {
+      result.current.saveItem({ ...bread, note: 'Sliced', price: 1.2 });
+    });
+
+    let added = false;
+    await act(() => {
+      added = result.current.addToBuyList('bread', 'Bakery');
+    });
+    expect(added).toBe(true);
+    expect(result.current.shoppingList).toEqual([
+      expect.objectContaining({
+        id: 'bread',
+        entryId: '["bread","Bakery"]',
+        shoppingStoreType: 'Bakery',
+        purchased: false,
+        restockQuantity: 1,
+        note: 'Sliced',
+        price: 1.2,
+      }),
+    ]);
+
+    expect(result.current.addToBuyList('bread', 'Bakery')).toBe(false);
+    expect(result.current.addToBuyList('bread', 'Hardware')).toBe(false);
+    expect(result.current.addToBuyList('nothing', 'Bakery')).toBe(false);
+    expect(result.current.shoppingList).toHaveLength(1);
+  });
+
+  it('brings back an entry that was ticked off, where it was', async () => {
+    const { result } = await renderStock();
+    await act(() => {
+      result.current.saveItem(milk);
+      result.current.saveItem(bread);
+    });
+    await act(() => {
+      result.current.createBuyList(['wholemilk', 'bread'], 'Supermarket');
+    });
+    await act(() => {
+      result.current.togglePurchased('["wholemilk","Supermarket"]');
+    });
+
+    await act(() => {
+      result.current.addToBuyList('wholemilk', 'Supermarket');
+    });
+
+    expect(result.current.shoppingList.map((entry) => [entry.id, entry.purchased])).toEqual([
+      ['wholemilk', false],
+      ['bread', false],
+    ]);
+  });
+});
+

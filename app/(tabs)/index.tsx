@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useMemo, useState, type ComponentProps } from 'react';
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Platform,
   Pressable,
@@ -17,7 +18,7 @@ import { StockItemCard } from '@/components/StockItemCard';
 import { useColors } from '@/hooks/useColors';
 import { useBackupStatus } from '@/state/BackupStatus';
 import { useSettings } from '@/state/Settings';
-import { useStock } from '@/state/StockContext';
+import { useStock, type StockItem } from '@/state/StockContext';
 import { backupReminder } from '@/utils/backup';
 import { greetingFor } from '@/utils/greeting';
 import { matchesSearch } from '@/utils/search';
@@ -98,7 +99,8 @@ function NoticeCard({
 export default function StockHomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { items, shoppingList, isLoading, storageError, loadProblem, loadNotice } = useStock();
+  const { items, shoppingList, isLoading, storageError, loadProblem, loadNotice, addToBuyList } =
+    useStock();
   const { lastBackupAt, checkedAt } = useBackupStatus();
   const { settings } = useSettings();
   const reminder =
@@ -106,6 +108,21 @@ export default function StockHomeScreen() {
       ? null
       : backupReminder(lastBackupAt, items.length > 0, checkedAt, settings.backupReminderDays);
   const toBuy = shoppingList.filter((item) => !item.purchased).length;
+  // For each stock item, the stores where it's on the buy list and not ticked off yet.
+  const listedStores = useMemo(() => {
+    const byItem = new Map<string, string[]>();
+    for (const entry of shoppingList) {
+      if (entry.oneTime || entry.purchased) continue;
+      byItem.set(entry.id, [...(byItem.get(entry.id) ?? []), entry.shoppingStoreType]);
+    }
+    return byItem;
+  }, [shoppingList]);
+
+  function addItemToBuyList(item: StockItem, store: string) {
+    if (!addToBuyList(item.id, store)) return;
+    const where = item.storeTypes.length > 1 ? ` for ${store}` : '';
+    AccessibilityInfo.announceForAccessibility(`Added ${item.name} to the buy list${where}.`);
+  }
   const [greeting] = useState(() => greetingFor(new Date().getHours()));
   const [sortBy, setSortBy] = useState<SortBy>('date');
   const [descending, setDescending] = useState(true);
@@ -491,6 +508,8 @@ export default function StockHomeScreen() {
               <StockItemCard
                 key={item.id}
                 item={item}
+                listedStores={listedStores.get(item.id) ?? []}
+                onAddToBuyList={(store) => addItemToBuyList(item, store)}
                 onEdit={() =>
                   router.push({
                     pathname: '/item-form',
