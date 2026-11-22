@@ -51,6 +51,7 @@ const DEFAULTS = {
   showPrices: false,
   currency: '',
   priceDecimals: 2,
+  stockGroupBy: 'none',
 };
 
 beforeEach(() => {
@@ -93,6 +94,7 @@ it('loads saved settings', async () => {
     showPrices: false,
     currency: '',
     priceDecimals: 2,
+    stockGroupBy: 'none',
   });
   expect(setHapticsEnabled).toHaveBeenLastCalledWith(false);
 });
@@ -124,6 +126,8 @@ it('falls back to the default for each value that is missing or invalid', () => 
   expect(readSettings(JSON.stringify({ showPrices: 'yes', currency: 5 }))).toMatchObject({ showPrices: false, currency: '' });
   expect(readSettings(JSON.stringify({ priceDecimals: 3 })).priceDecimals).toBe(3);
   expect(readSettings(JSON.stringify({ priceDecimals: 4 })).priceDecimals).toBe(2);
+  expect(readSettings(JSON.stringify({ stockGroupBy: 'place' })).stockGroupBy).toBe('place');
+  expect(readSettings(JSON.stringify({ stockGroupBy: 'aisle' })).stockGroupBy).toBe('none');
 });
 
 it('works with the defaults outside a provider', async () => {

@@ -18,7 +18,7 @@ export function shortItemIds(itemIds: string[], answers: boolean[]): string[] {
 type Placed = { name: string; location: string };
 
 // Places that differ only in case, accents or Arabic spelling variants are one place.
-const placeKey = (place: string) => normalizeForSearch(place);
+export const placeKey = (place: string) => normalizeForSearch(place);
 const compareText = (a: string, b: string) =>
   a.localeCompare(b, undefined, { sensitivity: 'base' });
 

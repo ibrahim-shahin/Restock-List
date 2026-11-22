@@ -12,6 +12,7 @@ import { Appearance, Platform } from 'react-native';
 import { COLOR_THEMES, type ColorThemeKey } from '@/constants/colors';
 import { setHapticsEnabled } from '@/utils/haptics';
 import type { PriceDecimals } from '@/utils/price';
+import type { GroupBy } from '@/utils/stockGroups';
 import { getLocalItem, setLocalItem } from './localStore';
 
 const SETTINGS_KEY = 'home-stock:settings:v1';
@@ -52,6 +53,8 @@ export type Settings = {
   currency: string;
   // 3 for currencies like the dinar.
   priceDecimals: PriceDecimals;
+  // How the Stock screen groups your items: not at all, by storage place or by store.
+  stockGroupBy: GroupBy;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -64,9 +67,12 @@ export const DEFAULT_SETTINGS: Settings = {
   showPrices: false,
   currency: '',
   priceDecimals: 2,
+  stockGroupBy: 'none',
 };
 
 const MAX_CURRENCY_LENGTH = 6;
+
+const STOCK_GROUPINGS: readonly GroupBy[] = ['none', 'place', 'store'];
 
 const MAX_ROUTE_PLACES = 100;
 
@@ -123,6 +129,9 @@ export function settingsFromValue(input: unknown, fallback: Settings = DEFAULT_S
     priceDecimals: PRICE_DECIMAL_OPTIONS.some((option) => option.value === value.priceDecimals)
       ? (value.priceDecimals as PriceDecimals)
       : fallback.priceDecimals,
+    stockGroupBy: STOCK_GROUPINGS.includes(value.stockGroupBy as GroupBy)
+      ? (value.stockGroupBy as GroupBy)
+      : fallback.stockGroupBy,
   };
 }
 

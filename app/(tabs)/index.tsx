@@ -22,6 +22,7 @@ import { useStock, type StockItem } from '@/state/StockContext';
 import { backupReminder } from '@/utils/backup';
 import { greetingFor } from '@/utils/greeting';
 import { matchesSearch } from '@/utils/search';
+import { groupStockItems, type GroupBy } from '@/utils/stockGroups';
 
 type SortBy = 'date' | 'name';
 
@@ -54,6 +55,47 @@ function FilterChip({
           { color: selected ? colors.primaryForeground : colors.foreground },
         ]}
       >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+// A button that groups the list, and ungroups it when pressed again.
+function GroupButton({
+  icon,
+  label,
+  accessibilityLabel,
+  selected,
+  onPress,
+  testID,
+}: {
+  icon: ComponentProps<typeof Feather>['name'];
+  label: string;
+  accessibilityLabel: string;
+  selected: boolean;
+  onPress: () => void;
+  testID: string;
+}) {
+  const colors = useColors();
+  return (
+    <Pressable
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.groupButton,
+        {
+          backgroundColor: selected ? colors.primary : colors.card,
+          borderColor: selected ? colors.primary : colors.border,
+        },
+        pressed && styles.pressed,
+      ]}
+      testID={testID}
+    >
+      <Feather name={icon} size={13} color={selected ? colors.primaryForeground : colors.primary} />
+      <Text style={[styles.groupButtonText, { color: selected ? colors.primaryForeground : colors.foreground }]}>
         {label}
       </Text>
     </Pressable>
@@ -102,7 +144,8 @@ export default function StockHomeScreen() {
   const { items, shoppingList, isLoading, storageError, loadProblem, loadNotice, addToBuyList } =
     useStock();
   const { lastBackupAt, checkedAt } = useBackupStatus();
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
+  const groupBy = settings.stockGroupBy;
   const reminder =
     isLoading || checkedAt === null
       ? null
@@ -157,6 +200,14 @@ export default function StockHomeScreen() {
         }),
     [items, locationFilter, storeFilter, query, sortBy, descending],
   );
+  const groups = useMemo(
+    () => groupStockItems(visibleItems, groupBy, settings.placeOrder),
+    [visibleItems, groupBy, settings.placeOrder],
+  );
+
+  function toggleGroupBy(next: GroupBy) {
+    updateSettings({ stockGroupBy: groupBy === next ? 'none' : next });
+  }
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -362,6 +413,28 @@ export default function StockHomeScreen() {
           </View>
         ) : null}
 
+        {items.length > 0 ? (
+          <View style={styles.groupRow}>
+            <Text style={[styles.groupLabel, { color: colors.mutedForeground }]}>GROUP BY</Text>
+            <GroupButton
+              accessibilityLabel="Group by storage place"
+              icon="map-pin"
+              label="Place"
+              onPress={() => toggleGroupBy('place')}
+              selected={groupBy === 'place'}
+              testID="group-by-place"
+            />
+            <GroupButton
+              accessibilityLabel="Group by store"
+              icon="shopping-bag"
+              label="Store"
+              onPress={() => toggleGroupBy('store')}
+              selected={groupBy === 'store'}
+              testID="group-by-store"
+            />
+          </View>
+        ) : null}
+
         {items.length > 0 && showFilters ? (
           <View style={[styles.filterPanel, { backgroundColor: colors.card }]} testID="filter-panel">
             <View style={styles.filterSection}>
@@ -504,19 +577,43 @@ export default function StockHomeScreen() {
           </View>
         ) : (
           <View style={styles.itemsList}>
-            {visibleItems.map((item) => (
-              <StockItemCard
-                key={item.id}
-                item={item}
-                listedStores={listedStores.get(item.id) ?? []}
-                onAddToBuyList={(store) => addItemToBuyList(item, store)}
-                onEdit={() =>
-                  router.push({
-                    pathname: '/item-form',
-                    params: { itemId: item.id },
-                  })
-                }
-              />
+            {groups.map((group) => (
+              <View key={group.key} style={styles.group} testID={group.title ? `stock-group-${group.title}` : undefined}>
+                {group.title ? (
+                  <View
+                    accessibilityLabel={`${group.title}, ${group.items.length} ${group.items.length === 1 ? 'item' : 'items'}`}
+                    accessibilityRole="header"
+                    accessible
+                    style={styles.groupHeader}
+                  >
+                    <Feather
+                      name={groupBy === 'store' ? 'shopping-bag' : 'map-pin'}
+                      size={14}
+                      color={colors.primary}
+                    />
+                    <Text style={[styles.groupTitle, { color: colors.foreground }]} numberOfLines={1}>
+                      {group.title}
+                    </Text>
+                    <Text style={[styles.groupCount, { color: colors.mutedForeground }]}>
+                      {group.items.length}
+                    </Text>
+                  </View>
+                ) : null}
+                {group.items.map((item) => (
+                  <StockItemCard
+                    key={`${group.key}:${item.id}`}
+                    item={item}
+                    listedStores={listedStores.get(item.id) ?? []}
+                    onAddToBuyList={(store) => addItemToBuyList(item, store)}
+                    onEdit={() =>
+                      router.push({
+                        pathname: '/item-form',
+                        params: { itemId: item.id },
+                      })
+                    }
+                  />
+                ))}
+              </View>
             ))}
           </View>
         )}
@@ -571,6 +668,14 @@ const styles = StyleSheet.create({
   clearFiltersText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   loading: { paddingVertical: 42 },
   itemsList: { gap: 10 },
+  groupRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: -8 },
+  groupLabel: { fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1, marginRight: 2 },
+  groupButton: { minHeight: 34, paddingHorizontal: 12, borderWidth: 1, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  groupButtonText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  group: { gap: 10 },
+  groupHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 4, marginTop: 6 },
+  groupTitle: { flexShrink: 1, fontFamily: 'Inter_700Bold', fontSize: 14 },
+  groupCount: { fontFamily: 'Inter_500Medium', fontSize: 12 },
   emptyCard: { alignItems: 'center', borderRadius: 22, paddingHorizontal: 24, paddingVertical: 25, gap: 11 },
   emptyIcon: { height: 49, width: 49, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginBottom: 1 },
   emptyTitle: { fontFamily: 'Inter_700Bold', fontSize: 16, textAlign: 'center' },

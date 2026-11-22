@@ -58,6 +58,7 @@ const SETTING_NAMES: Partial<Record<keyof Settings, string>> = {
   showPrices: 'prices',
   currency: 'currency',
   priceDecimals: 'price decimals',
+  stockGroupBy: 'stock grouping',
 };
 
 type BackupChanges = { settings: Partial<Settings>; reminder: ReminderSettings | null };
