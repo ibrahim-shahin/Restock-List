@@ -17,8 +17,10 @@ import React, {
 export type StockItem = {
   id: string;
   name: string;
-  minimumQuantity: number;
-  restockQuantity: number;
+  // How many to keep at home. Without it, stock checks ask whether there's enough.
+  minimumQuantity?: number;
+  // How many to buy. Without it, the buy list shows just the item.
+  restockQuantity?: number;
   unit: string;
   location: string;
   storeTypes: string[];
@@ -220,6 +222,21 @@ function readEmoji(value: unknown): string | undefined {
 
 export const MAX_NOTE_LENGTH = 200;
 
+/** A whole number of at least `smallest`, or undefined: amounts are optional. */
+export function readCount(value: unknown, smallest: number): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= smallest ? value : undefined;
+}
+
+// The optional amounts, left out when they aren't set.
+function countFields(minimum: unknown, restock: unknown) {
+  const minimumQuantity = readCount(minimum, 0);
+  const restockQuantity = readCount(restock, 1);
+  return {
+    ...(minimumQuantity !== undefined ? { minimumQuantity } : {}),
+    ...(restockQuantity !== undefined ? { restockQuantity } : {}),
+  };
+}
+
 function readNote(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const note = value.trim().slice(0, MAX_NOTE_LENGTH);
@@ -236,27 +253,16 @@ function normalizeStockItem(
   const name = typeof record.name === 'string' ? record.name.trim() : '';
   const location = typeof record.location === 'string' ? record.location.trim() : '';
   const storeTypes = readStoreTypes(record);
-  const { minimumQuantity, restockQuantity } = record;
 
-  if (
-    !name ||
-    !location ||
-    storeTypes.length === 0 ||
-    typeof minimumQuantity !== 'number' ||
-    !Number.isInteger(minimumQuantity) ||
-    minimumQuantity < 0 ||
-    typeof restockQuantity !== 'number' ||
-    !Number.isInteger(restockQuantity) ||
-    restockQuantity < 1
-  ) {
+  if (!name || !location || storeTypes.length === 0) {
     throw new Error(`“${name || 'An item'}” is missing valid stock details.`);
   }
 
   return {
     id: idOverride ?? itemIdFromName(name),
     name,
-    minimumQuantity,
-    restockQuantity,
+    // Amounts that are missing or not whole numbers are left unset.
+    ...countFields(record.minimumQuantity, record.restockQuantity),
     unit: typeof record.unit === 'string' ? record.unit : '',
     location,
     storeTypes,
@@ -616,12 +622,20 @@ export function StockProvider({ children }: { children: ReactNode }) {
         matchSpelling(store, otherItems.flatMap((item) => item.storeTypes)),
       ),
     );
-    const { emoji: draftEmoji, note: draftNote, price: draftPrice, ...details } = draft;
+    const {
+      emoji: draftEmoji,
+      note: draftNote,
+      price: draftPrice,
+      minimumQuantity: draftMinimum,
+      restockQuantity: draftRestock,
+      ...details
+    } = draft;
     const emoji = readEmoji(draftEmoji);
     const note = readNote(draftNote);
     const price = readPrice(draftPrice);
     const savedItem: StockItem = {
       ...details,
+      ...countFields(draftMinimum, draftRestock),
       ...(emoji ? { emoji } : {}),
       ...(note ? { note } : {}),
       ...(price !== undefined ? { price } : {}),

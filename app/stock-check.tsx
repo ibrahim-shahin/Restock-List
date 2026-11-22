@@ -328,22 +328,31 @@ export default function StockCheckScreen() {
                   {currentItem.note}
                 </Text>
               ) : null}
-              <Text style={[styles.question, { color: colors.mutedForeground }]}>
-                Do you have at least
-              </Text>
-              <View style={[styles.minimumBadge, { backgroundColor: colors.card }]}>
-                <Text style={[styles.minimumValue, { color: colors.primary }]}>
-                  {currentItem.minimumQuantity}
+              {currentItem.minimumQuantity === undefined ? (
+                // No minimum set: you judge whether there's enough.
+                <Text style={[styles.question, { color: colors.mutedForeground }]} testID="check-question">
+                  Do you have enough on hand?
                 </Text>
-                {currentItem.unit ? (
-                  <Text style={[styles.minimumUnit, { color: colors.primary }]}>
-                    {currentItem.unit}
+              ) : (
+                <>
+                  <Text style={[styles.question, { color: colors.mutedForeground }]} testID="check-question">
+                    Do you have at least
                   </Text>
-                ) : null}
-              </View>
-              <Text style={[styles.questionSuffix, { color: colors.mutedForeground }]}>
-                on hand?
-              </Text>
+                  <View style={[styles.minimumBadge, { backgroundColor: colors.card }]}>
+                    <Text style={[styles.minimumValue, { color: colors.primary }]}>
+                      {currentItem.minimumQuantity}
+                    </Text>
+                    {currentItem.unit ? (
+                      <Text style={[styles.minimumUnit, { color: colors.primary }]}>
+                        {currentItem.unit}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Text style={[styles.questionSuffix, { color: colors.mutedForeground }]}>
+                    on hand?
+                  </Text>
+                </>
+              )}
               {place?.nextPlace && place.position === place.count ? (
                 <View style={styles.locationLine} testID="next-place">
                   <Feather name="corner-down-right" size={13} color={colors.mutedForeground} />
@@ -372,7 +381,7 @@ export default function StockCheckScreen() {
                 </View>
                 {/* Repeats the number, so it shows even when the question has to scroll. */}
                 <Text style={[styles.answerTitle, { color: colors.foreground }]}>
-                  {currentItem.minimumQuantity > 0
+                  {currentItem.minimumQuantity !== undefined && currentItem.minimumQuantity > 0
                     ? `Yes, I have at least ${currentItem.minimumQuantity}${currentItem.unit ? ` ${currentItem.unit}` : ''}`
                     : 'Yes, I have enough'}
                 </Text>

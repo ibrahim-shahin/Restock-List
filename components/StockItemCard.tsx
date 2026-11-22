@@ -49,14 +49,16 @@ export function StockItemCard({ item, onEdit }: Props) {
           </Text>
         </View>
       </View>
-      <View style={styles.quantity}>
-        <Text style={[styles.quantityNumber, { color: colors.foreground }]}>
-          {item.minimumQuantity}
-        </Text>
-        <Text style={[styles.quantityLabel, { color: colors.mutedForeground }]}>
-          min
-        </Text>
-      </View>
+      {item.minimumQuantity !== undefined ? (
+        <View style={styles.quantity} testID={`minimum-${item.id}`}>
+          <Text style={[styles.quantityNumber, { color: colors.foreground }]}>
+            {item.minimumQuantity}
+          </Text>
+          <Text style={[styles.quantityLabel, { color: colors.mutedForeground }]}>
+            min
+          </Text>
+        </View>
+      ) : null}
       <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
     </Pressable>
   );

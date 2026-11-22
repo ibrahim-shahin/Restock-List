@@ -80,10 +80,10 @@ export default function ItemFormScreen() {
   const initialized = useRef(!itemId);
   const [name, setName] = useState(existingItem?.name ?? '');
   const [minimumQuantity, setMinimumQuantity] = useState(
-    existingItem?.minimumQuantity.toString() ?? '',
+    existingItem?.minimumQuantity?.toString() ?? '',
   );
   const [restockQuantity, setRestockQuantity] = useState(
-    existingItem?.restockQuantity.toString() ?? '',
+    existingItem?.restockQuantity?.toString() ?? '',
   );
   const [unit, setUnit] = useState(existingItem?.unit ?? '');
   const [note, setNote] = useState(existingItem?.note ?? '');
@@ -111,8 +111,8 @@ export default function ItemFormScreen() {
     if (!existingItem || initialized.current) return;
     initialized.current = true;
     setName(existingItem.name);
-    setMinimumQuantity(existingItem.minimumQuantity.toString());
-    setRestockQuantity(existingItem.restockQuantity.toString());
+    setMinimumQuantity(existingItem.minimumQuantity?.toString() ?? '');
+    setRestockQuantity(existingItem.restockQuantity?.toString() ?? '');
     setUnit(existingItem.unit);
     setNote(existingItem.note ?? '');
     setPrice(priceInputValue(existingItem.price));
@@ -142,19 +142,20 @@ export default function ItemFormScreen() {
     const cleanName = name.trim();
     const cleanLocation = location.trim();
     const cleanStores = [...new Set(storeTypes.map((store) => store.trim()).filter(Boolean))];
-    const minimum = Number(minimumQuantity);
-    const restock = Number(restockQuantity);
+    // Both amounts are optional; empty means not set.
+    const minimum = minimumQuantity.trim() ? Number(minimumQuantity) : undefined;
+    const restock = restockQuantity.trim() ? Number(restockQuantity) : undefined;
 
     if (!cleanName) {
       setError('Add a name for this item.');
       return;
     }
-    if (!minimumQuantity.trim() || !Number.isInteger(minimum) || minimum < 0) {
-      setError('Enter a whole number for the minimum quantity.');
+    if (minimum !== undefined && (!Number.isInteger(minimum) || minimum < 0)) {
+      setError('Enter a whole number for the minimum, or leave it empty.');
       return;
     }
-    if (!restockQuantity.trim() || !Number.isInteger(restock) || restock < 1) {
-      setError('Enter a whole number greater than zero for how much to buy.');
+    if (restock !== undefined && (!Number.isInteger(restock) || restock < 1)) {
+      setError('Enter how many to buy, 1 or more, or leave it empty.');
       return;
     }
     if (!cleanLocation || cleanStores.length === 0) {
@@ -164,8 +165,8 @@ export default function ItemFormScreen() {
 
     const draft: StockItemDraft = {
       name: cleanName,
-      minimumQuantity: minimum,
-      restockQuantity: restock,
+      ...(minimum !== undefined ? { minimumQuantity: minimum } : {}),
+      ...(restock !== undefined ? { restockQuantity: restock } : {}),
       unit: unit.trim(),
       location: cleanLocation,
       storeTypes: cleanStores,
@@ -329,7 +330,7 @@ export default function ItemFormScreen() {
               accessibilityLabel="Minimum quantity"
               keyboardType="number-pad"
               onChangeText={(text) => setMinimumQuantity(cleanQuantityInput(text))}
-              placeholder="2"
+              placeholder="e.g. 2"
               placeholderTextColor={colors.mutedForeground}
               style={fieldStyle}
               testID="minimum-quantity-input"
@@ -342,7 +343,7 @@ export default function ItemFormScreen() {
               accessibilityLabel="Restock quantity"
               keyboardType="number-pad"
               onChangeText={(text) => setRestockQuantity(cleanQuantityInput(text))}
-              placeholder="4"
+              placeholder="e.g. 4"
               placeholderTextColor={colors.mutedForeground}
               style={fieldStyle}
               testID="restock-quantity-input"
@@ -350,6 +351,10 @@ export default function ItemFormScreen() {
             />
           </View>
         </View>
+        <Text style={[styles.fieldHint, styles.quantityHint, { color: colors.mutedForeground }]}>
+          Both are optional. Without a minimum, stock checks ask if you have enough. Without how
+          many, the buy list shows just the item.
+        </Text>
         <View style={styles.fieldGroup}>
           <Text style={[styles.label, { color: colors.foreground }]}>UNIT (OPTIONAL)</Text>
           <TextInput
@@ -570,6 +575,7 @@ const styles = StyleSheet.create({
   emojiChoiceText: { fontSize: 23 },
   quantityRow: { flexDirection: 'row', gap: 12 },
   quantityField: { flex: 1 },
+  quantityHint: { marginTop: -10 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 1 },
   chip: { minHeight: 31, justifyContent: 'center', borderWidth: 1, borderRadius: 11, paddingHorizontal: 10 },
   chipText: { fontFamily: 'Inter_500Medium', fontSize: 10 },

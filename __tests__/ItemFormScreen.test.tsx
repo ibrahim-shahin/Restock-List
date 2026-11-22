@@ -77,6 +77,38 @@ it('saves the icon you choose', async () => {
   expect(mockSaveItem).toHaveBeenCalledWith(expect.objectContaining({ name: 'Milk', emoji: '🧃' }), undefined);
 });
 
+it('saves an item without a minimum or how many to buy', async () => {
+  await render(<ItemFormScreen />);
+  await fillInMilk();
+  await fireEvent.changeText(screen.getByTestId('minimum-quantity-input'), '');
+  await fireEvent.changeText(screen.getByTestId('restock-quantity-input'), '');
+
+  await fireEvent.press(screen.getByTestId('save-item-button'));
+
+  const draft = mockSaveItem.mock.calls[0][0] as Record<string, unknown>;
+  expect(draft).toMatchObject({ name: 'Milk', location: 'Fridge', storeTypes: ['Supermarket'] });
+  expect(draft).not.toHaveProperty('minimumQuantity');
+  expect(draft).not.toHaveProperty('restockQuantity');
+});
+
+it('saves a minimum of zero, but asks for at least one to buy', async () => {
+  await render(<ItemFormScreen />);
+  await fillInMilk();
+  await fireEvent.changeText(screen.getByTestId('minimum-quantity-input'), '0');
+  await fireEvent.changeText(screen.getByTestId('restock-quantity-input'), '0');
+
+  await fireEvent.press(screen.getByTestId('save-item-button'));
+  expect(screen.getByText('Enter how many to buy, 1 or more, or leave it empty.')).toBeTruthy();
+  expect(mockSaveItem).not.toHaveBeenCalled();
+
+  await fireEvent.changeText(screen.getByTestId('restock-quantity-input'), '3');
+  await fireEvent.press(screen.getByTestId('save-item-button'));
+  expect(mockSaveItem).toHaveBeenCalledWith(
+    expect.objectContaining({ minimumQuantity: 0, restockQuantity: 3 }),
+    undefined,
+  );
+});
+
 it('saves a note with the item', async () => {
   await render(<ItemFormScreen />);
   await fillInMilk();

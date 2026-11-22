@@ -169,3 +169,19 @@ it('follows your route through the home', async () => {
   expect(screen.getByText('Bread')).toBeTruthy();
   expect(screen.getByTestId('next-place')).toHaveTextContent(/Next: Fridge$/);
 });
+
+it('asks whether you have enough when an item has no minimum', async () => {
+  mockItems = [
+    // The attic comes first, so the check starts with the salt.
+    { id: 'salt', name: 'Salt', unit: '', location: 'Attic', storeTypes: ['Supermarket'], createdAt: 1 },
+    ...defaultItems,
+  ];
+  await startCheck();
+
+  expect(screen.getByText('Salt')).toBeTruthy();
+  expect(screen.getByTestId('check-question')).toHaveTextContent('Do you have enough on hand?');
+  expect(screen.getByTestId('stock-answer-yes')).toHaveTextContent(/Yes, I have enough/);
+
+  await fireEvent.press(screen.getByTestId('stock-answer-yes'));
+  expect(screen.getByTestId('check-question')).toHaveTextContent('Do you have at least');
+});

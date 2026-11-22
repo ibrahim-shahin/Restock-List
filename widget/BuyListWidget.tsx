@@ -111,7 +111,9 @@ function BuyListLayout({
                   style={{ fontSize: 13, fontWeight: '600', color: hex(colors.foreground) }}
                 />
               </FlexWidget>
-              <TextWidget text={line.amount} maxLines={1} style={{ fontSize: 12, marginLeft: 8, color: muted }} />
+              {line.amount ? (
+                <TextWidget text={line.amount} maxLines={1} style={{ fontSize: 12, marginLeft: 8, color: muted }} />
+              ) : null}
             </FlexWidget>
           ))
         )}

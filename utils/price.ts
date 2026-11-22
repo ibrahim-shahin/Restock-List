@@ -55,12 +55,13 @@ export function formatPrice(amount: number, currency: string, decimals: PriceDec
   return label ? `${text} ${label}` : text;
 }
 
-type Priced = { price?: number; restockQuantity: number; purchased?: boolean };
+// Without an amount, a line counts as one.
+type Priced = { price?: number; restockQuantity?: number; purchased?: boolean };
 
 /** The cost of one buy-list line, or undefined without a price. */
 export function lineTotal(entry: Priced): number | undefined {
   if (entry.price === undefined) return undefined;
-  return Math.round(toUnits(entry.price, KEPT_DECIMALS) * entry.restockQuantity) / 10 ** KEPT_DECIMALS;
+  return Math.round(toUnits(entry.price, KEPT_DECIMALS) * (entry.restockQuantity ?? 1)) / 10 ** KEPT_DECIMALS;
 }
 
 /** The estimated cost of what is still to buy, and how many of those lines have no price. */

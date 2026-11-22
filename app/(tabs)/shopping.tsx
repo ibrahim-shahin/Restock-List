@@ -24,7 +24,9 @@ import { estimateTotal, formatPrice, lineTotal } from '@/utils/price';
 
 const UNDO_SECONDS = 5;
 
+// Empty when the item has no amount to buy.
 function quantityLabel(item: BuyListItem): string {
+  if (item.restockQuantity === undefined) return '';
   return `${item.restockQuantity} ${item.unit || (item.restockQuantity === 1 ? 'unit' : 'units')}`;
 }
 
@@ -123,11 +125,13 @@ function BuyRow({
             </Text>
           ) : null}
         </View>
-        <View style={[styles.quantityPill, { backgroundColor: colors.accent }]}>
-          <Text style={[styles.quantityText, { color: colors.primary }]}>
-            {quantityLabel(item)}
-          </Text>
-        </View>
+        {quantityLabel(item) ? (
+          <View style={[styles.quantityPill, { backgroundColor: colors.accent }]}>
+            <Text style={[styles.quantityText, { color: colors.primary }]}>
+              {quantityLabel(item)}
+            </Text>
+          </View>
+        ) : null}
       </Pressable>
       {item.oneTime ? (
         <Pressable
@@ -183,6 +187,11 @@ export default function ShoppingListScreen() {
     const line = showPrices ? lineTotal(item) : undefined;
     return line === undefined ? undefined : formatPrice(line, settings.currency, settings.priceDecimals);
   };
+  // " — 2 L, 2.50 JD" in a shared list, or nothing when there's neither.
+  const shareDetails = (item: BuyListItem) => {
+    const details = [quantityLabel(item), priceOf(item)].filter(Boolean).join(', ');
+    return details ? ` — ${details}` : '';
+  };
   const estimate = estimateTotal(shoppingList);
   const estimateText = `About ${formatPrice(estimate.total, settings.currency, settings.priceDecimals)} still to spend${
     estimate.unpriced > 0
@@ -200,7 +209,7 @@ export default function ShoppingListScreen() {
           .filter((item) => item.shoppingStoreType === store)
           .map(
             (item) =>
-              `${item.purchased ? '✓' : '•'} ${item.name} — ${quantityLabel(item)}${priceOf(item) ? `, ${priceOf(item)}` : ''}${item.oneTime ? '' : ` (${item.location})`}${item.note ? ` — ${item.note}` : ''}`,
+              `${item.purchased ? '✓' : '•'} ${item.name}${shareDetails(item)}${item.oneTime ? '' : ` (${item.location})`}${item.note ? ` — ${item.note}` : ''}`,
           ),
         '',
       ]),

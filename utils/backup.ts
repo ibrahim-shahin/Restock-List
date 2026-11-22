@@ -25,7 +25,8 @@ export function hasStockData(data: SavedData): boolean {
 export function createBackup(data: SavedData, now = new Date(), preferences: BackupPreferences = {}) {
   return {
     format: 'home-stock-backup',
-    version: 4,
+    // 5: items may leave out their minimum and how many to buy.
+    version: 5,
     exportedAt: now.toISOString(),
     items: data.items,
     shoppingList: data.shoppingList,

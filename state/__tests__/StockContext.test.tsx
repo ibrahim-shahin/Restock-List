@@ -465,16 +465,25 @@ describe('importing a backup', () => {
     expect(() => result.current.importBackup({ items: [] })).toThrow('The JSON does not contain any saved Home Stock data.');
   });
 
-  it('rejects quantities that are not numbers', async () => {
+  it('imports items without amounts, and leaves out amounts that are not whole numbers', async () => {
     const { result } = await renderStock();
+    const { minimumQuantity: _minimum, restockQuantity: _restock, ...plain } = batteries;
 
-    expect(() => result.current.importBackup([{ ...batteries, minimumQuantity: null }])).toThrow(
-      /missing valid stock details/,
-    );
-    expect(() => result.current.importBackup([{ ...batteries, restockQuantity: true }])).toThrow(
-      /missing valid stock details/,
-    );
-    expect(result.current.items).toEqual([]);
+    await act(() => {
+      result.current.importBackup([
+        { ...plain, name: 'Soap' },
+        { ...batteries, name: 'Rice', minimumQuantity: null, restockQuantity: 2.5 },
+        { ...batteries, name: 'Tea', minimumQuantity: -1, restockQuantity: 0 },
+        { ...batteries, name: 'Salt', minimumQuantity: 0, restockQuantity: 3 },
+      ]);
+    });
+
+    const byName = Object.fromEntries(result.current.items.map((item) => [item.name, item]));
+    for (const name of ['Soap', 'Rice', 'Tea']) {
+      expect(byName[name]).not.toHaveProperty('minimumQuantity');
+      expect(byName[name]).not.toHaveProperty('restockQuantity');
+    }
+    expect(byName.Salt).toMatchObject({ minimumQuantity: 0, restockQuantity: 3 });
   });
 
   it('rejects an item with missing details and changes nothing', async () => {
@@ -993,5 +1002,39 @@ describe('item prices', () => {
 
     expect(result.current.items[0]).not.toHaveProperty('price');
     expect(result.current.shoppingList[0].price).toBe(7.5);
+  });
+});
+
+describe('items without amounts', () => {
+  it('saves an item without a minimum or how many to buy, and lists it without an amount', async () => {
+    const first = await renderStock();
+    const { minimumQuantity: _minimum, restockQuantity: _restock, ...plainMilk } = milk;
+    await act(() => {
+      first.result.current.saveItem(plainMilk);
+    });
+    await act(() => {
+      first.result.current.createBuyList(['wholemilk'], 'Supermarket');
+    });
+
+    expect(first.result.current.items[0]).not.toHaveProperty('minimumQuantity');
+    expect(first.result.current.items[0]).not.toHaveProperty('restockQuantity');
+    expect(first.result.current.shoppingList[0]).not.toHaveProperty('restockQuantity');
+    await waitFor(() => expect(savedSnapshot().shoppingList).toHaveLength(1));
+    await first.unmount();
+
+    const second = await renderStock();
+    expect(second.result.current.items[0].name).toBe('Whole Milk');
+    expect(second.result.current.items[0].minimumQuantity).toBeUndefined();
+    expect(second.result.current.shoppingList[0].restockQuantity).toBeUndefined();
+  });
+
+  it('keeps an amount of zero for the minimum, and drops amounts that are not whole numbers', async () => {
+    const { result } = await renderStock();
+    await act(() => {
+      result.current.saveItem({ ...milk, minimumQuantity: 0, restockQuantity: 1.5 });
+    });
+
+    expect(result.current.items[0].minimumQuantity).toBe(0);
+    expect(result.current.items[0]).not.toHaveProperty('restockQuantity');
   });
 });

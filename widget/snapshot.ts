@@ -32,7 +32,11 @@ export function buildWidgetSnapshot(shoppingList: BuyListItem[], settings: Widge
     lines: remaining.slice(0, MAX_LINES).map((entry) => ({
       emoji: itemEmoji(entry),
       name: entry.name,
-      amount: `${entry.restockQuantity}${entry.unit ? ` ${entry.unit}` : ''}`,
+      // Empty when there's no amount to buy.
+      amount:
+        entry.restockQuantity === undefined
+          ? ''
+          : `${entry.restockQuantity}${entry.unit ? ` ${entry.unit}` : ''}`,
     })),
     toBuy: remaining.length,
     ...(estimate && estimate.total > 0

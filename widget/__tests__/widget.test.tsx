@@ -73,6 +73,16 @@ describe('what the widget shows', () => {
     );
   });
 
+  it('shows no amount for an item that has none', () => {
+    const snapshot = buildWidgetSnapshot([entry('Salt', { restockQuantity: undefined })], DEFAULT_SETTINGS);
+
+    expect(snapshot.lines).toEqual([{ emoji: '🧂', name: 'Salt', amount: '' }]);
+    const shown = texts(renderBuyListWidget(snapshot, 200).light);
+    expect(shown).toEqual(expect.arrayContaining(['🧂  Salt']));
+    // The only empty text is the estimate line, which prices would fill.
+    expect(shown.filter((text) => text === '')).toHaveLength(1);
+  });
+
   it('adds the estimate when prices are on, with the decimals you chose', () => {
     const milk = [entry('Milk', { price: 1.25 })];
     const prices = { ...DEFAULT_SETTINGS, showPrices: true, currency: 'JD' };

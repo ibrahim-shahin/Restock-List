@@ -52,6 +52,7 @@ beforeEach(() => {
   mockKeepScreenOn.current = false;
   mockPrices.current = { showPrices: false, currency: '' };
   milk.price = 1.25;
+  milk.restockQuantity = 2;
 });
 
 it('marks one-time items and lets you remove them', async () => {
@@ -220,3 +221,21 @@ describe('prices', () => {
     expect(screen.getByTestId('trip-estimate')).toHaveTextContent(/^About 2\.500 JD still to spend/);
   });
 });
+
+it('shows and shares an item without an amount as just the item', async () => {
+  delete milk.restockQuantity;
+  mockPrices.current = { showPrices: true, currency: 'JD' };
+  const share = jest.spyOn(Share, 'share').mockResolvedValue({ action: Share.sharedAction });
+  await render(<ShoppingListScreen />);
+
+  expect(screen.getByTestId('buy-item-milk').props.accessibilityLabel).toBe(
+    'Mark purchased: Milk, 1.25 JD, Full fat, Fridge',
+  );
+  expect(screen.getByTestId('buy-price-milk')).toHaveTextContent('1.25 JD');
+
+  await fireEvent.press(screen.getByTestId('share-buy-list-button'));
+  const { message } = share.mock.calls[0][0] as { message: string };
+  expect(message).toContain('• Milk — 1.25 JD (Fridge) — Full fat');
+  share.mockRestore();
+});
+

@@ -68,7 +68,7 @@ describe('backup contents', () => {
   it('wraps the stock in the Home Stock backup format', () => {
     expect(createBackup(data, now)).toEqual({
       format: 'home-stock-backup',
-      version: 4,
+      version: 5,
       exportedAt: now.toISOString(),
       ...data,
     });

@@ -78,6 +78,8 @@ describe('showing prices', () => {
     ];
     expect(lineTotal(entries[0])).toBe(3.3);
     expect(lineTotal(entries[2])).toBeUndefined();
+    // Without an amount, a line counts as one.
+    expect(lineTotal({ price: 2.5 })).toBe(2.5);
     expect(estimateTotal(entries)).toEqual({ total: 4, unpriced: 1 });
   });
 
